@@ -103,7 +103,8 @@ sim_data <- function(simpars) {
   mat[, "edss_x1"] <- convert_to_EDSS_scale(mat[, "l_x1"]) #Observed outcome
   mat[, "edss"] <- convert_to_EDSS_scale(mat[, "l_dr"]) #Observed outcome
   
-  data.frame(mat)
+  dat <- data.frame(mat)
+  dat %>% select(centerid, patid, x, age, time, edss)
 }
 
 setup <- function(tx_alloc_FUN = treatment_alloc_confounding, # Function for treatment allocation
