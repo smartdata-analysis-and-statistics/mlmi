@@ -85,7 +85,7 @@ sim_data <- function(simpars) {
                      "patid", 
                      "dgm_alpha_ij", 
                      "dgm_beta_1j", 
-                     "x",
+                     "trt",
                      "age", 
                      "time", "l_x0", "l_x1", "l_dr", "edss_x0", "edss_x1", "edss")
   
@@ -93,7 +93,7 @@ sim_data <- function(simpars) {
   mat[, "patid"] <- rep(seq(n_total), each = length(ytimes))
   mat[, "dgm_alpha_ij"] <- as.vector(t(delta_patient))
   mat[, "dgm_beta_1j"] <- as.vector(t(delta_cluster))
-  mat[, "x"] <- rep(xtreat, each = length(ytimes)) # Received treatment
+  mat[, "trt"] <- rep(xtreat, each = length(ytimes)) # Received treatment
   mat[, "age"] <- rep(age, each = length(ytimes))
   mat[, "time"] <- rep(ytimes, n_total)
   mat[, "l_x0"] <- dsx[,"l_x0"]  # Latent outcome under x=0
@@ -104,7 +104,7 @@ sim_data <- function(simpars) {
   mat[, "edss"] <- convert_to_EDSS_scale(mat[, "l_dr"]) #Observed outcome
   
   dat <- data.frame(mat)
-  dat %>% select(centerid, patid, x, age, time, edss)
+  dat %>% select(centerid, patid, trt, age, time, edss)
 }
 
 setup <- function(tx_alloc_FUN = treatment_alloc_confounding, # Function for treatment allocation
@@ -208,6 +208,7 @@ treatment_alloc_confounding <- function(age) {
 
 censor_visits_1 <- function(data, 
                             outcome_var = "edss", # The outcome variable 
+                            treat_var = "trt",
                             time_var = "time") {
   
   ncenters <- length(unique(data$centerid))
@@ -223,7 +224,8 @@ censor_visits_1 <- function(data,
 }
 
 censor_visits_2 <- function(data, 
-                            outcome_var = "edss", 
+                            outcome_var = "edss",
+                            treat_var = "trt",
                             time_var = "time") {
 
   prob_yobs <- rep(expit(-1.94), nrow(data))
@@ -237,7 +239,8 @@ censor_visits_2 <- function(data,
 
 # Visits missing according to center and time
 censor_visits_3 <- function(data,
-                            outcome_var = "edss", 
+                            outcome_var = "edss",
+                            treat_var = "trt",
                             time_var = "time") {
   
   ncenters <- length(unique(data$centerid))
@@ -254,7 +257,8 @@ censor_visits_3 <- function(data,
 }
 
 censor_visits_4 <- function(data, 
-                            outcome_var = "edss", 
+                            outcome_var = "edss",
+                            treat_var = "trt",
                             time_var = "time") {
   
   ncenters <- length(unique(data$centerid))
@@ -262,7 +266,7 @@ censor_visits_4 <- function(data,
   # Draw the center effects
   u <- rnorm(ncenters, mean = 0, sd = 0.15)
   
-  prob_yobs <- expit(-2.31 + u[data$centerid] - 0.5 * log(data[,time_var]/36) - data$x*0.8)
+  prob_yobs <- expit(-2.31 + u[data$centerid] - 0.5 * log(data[,time_var]/36) - data[,treat_var]*0.8)
   
   # Set outcome to NA where missing
   data[rbinom(nrow(data), size = 1, prob = prob_yobs) == 0, outcome_var] <- NA
@@ -270,10 +274,9 @@ censor_visits_4 <- function(data,
   data %>% na.omit()
 }
 
-
-# Visits missing according to center and time
-censor_visits_5 <- function(data, 
-                            outcome_var = "edss", 
+censor_visits_5 <- function(data,
+                            outcome_var = "edss",
+                            treat_var = "trt",
                             time_var = "time") {
   
   ncenters <- length(unique(data$centerid))
@@ -281,24 +284,7 @@ censor_visits_5 <- function(data,
   # Draw the center effects
   u <- rnorm(ncenters, mean = 0, sd = 0.15)
   
-  prob_yobs <- expit(-2.31 + u[data$centerid] - 1.1 * log(data[,time_var]/36) - data$x*0.8)
-  
-  # Set outcome to NA where missing
-  data[rbinom(nrow(data), size = 1, prob = prob_yobs) == 0, outcome_var] <- NA
-  
-  data %>% na.omit()
-}
-
-censor_visits_6 <- function(data,
-                            outcome_var = "edss", 
-                            time_var = "time") {
-  
-  ncenters <- length(unique(data$centerid))
-  
-  # Draw the center effects
-  u <- rnorm(ncenters, mean = 0, sd = 0.15)
-  
-  prob_yobs <- expit(-1.6 + u[data$centerid] - data$x*0.7)
+  prob_yobs <- expit(-1.6 + u[data$centerid] - data[,treat_var]*0.7)
 
   # Set outcome to NA where missing
   data[rbinom(nrow(data), size = 1, prob = prob_yobs) == 0, outcome_var] <- NA
@@ -306,13 +292,14 @@ censor_visits_6 <- function(data,
   data %>% na.omit()
 }
 
-censor_visits_7 <- function(data, 
-                            outcome_var = "edss", 
+censor_visits_6 <- function(data, 
+                            outcome_var = "edss",
+                            treat_var = "trt",
                             time_var = "time") {
   
   prob_yobs <- rep(0.03, nrow(data)) 
-  prob_yobs[data$x == 0 & data[,time_var] %% 6 == 0] <- 0.85
-  prob_yobs[data$x == 1 & data[,time_var] %% 9 == 0] <- 0.67
+  prob_yobs[data[,treat_var] == 0 & data[,time_var] %% 6 == 0] <- 0.85
+  prob_yobs[data[,treat_var] == 1 & data[,time_var] %% 9 == 0] <- 0.67
 
   # Set outcome to NA where missing
   data[rbinom(nrow(data), size = 1, prob = prob_yobs) == 0, outcome_var] <- NA
@@ -322,13 +309,14 @@ censor_visits_7 <- function(data,
 
 
 # 3 vs 9 months schedule
-censor_visits_8 <- function(data, 
-                            outcome_var = "edss", 
+censor_visits_7 <- function(data, 
+                            outcome_var = "edss",
+                            treat_var = "trt",
                             time_var = "time") {
   
   prob_yobs <- rep(0.03, nrow(data))
-  prob_yobs[data$x == 0 & data[,time_var] %% 3 == 0] <- 0.35
-  prob_yobs[data$x == 1 & data[,time_var] %% 9 == 0] <- 0.55
+  prob_yobs[data[,treat_var] == 0 & data[,time_var] %% 3 == 0] <- 0.35
+  prob_yobs[data[,treat_var] == 1 & data[,time_var] %% 9 == 0] <- 0.55
   
   # Set outcome to NA where missing
   data[rbinom(nrow(data), size = 1, prob = prob_yobs) == 0, outcome_var] <- NA
@@ -336,12 +324,13 @@ censor_visits_8 <- function(data,
   data %>% na.omit()
 }
 
-censor_visits_9 <- function(data, 
-                            outcome_var = "edss", 
+censor_visits_8 <- function(data, 
+                            outcome_var = "edss",
+                            treat_var = "trt",
                             time_var = "time") {
   
   # Define MNAR model
-  prob_yobs <- expit(-0.5  -  0.5 * data[,outcome_var] + 0.5 * data$x)
+  prob_yobs <- expit(-0.5  -  0.5 * data[,outcome_var] + 0.5 * data[,treat_var])
 
   # Set outcome to NA where missing
   data[rbinom(nrow(data), size = 1, prob = prob_yobs) == 0, outcome_var] <- NA
