@@ -11,11 +11,8 @@ library(nlme)
 options(dplyr.summarise.inform = FALSE)
 
 #Generate  EDSS outcomes without any noise (simplified DGM by Gabrielle)
-simdata <- function( 
-  simpars,
-  logger,
-  quiet = FALSE
-) {
+sim_data <- function(simpars) {
+  
   # Identify total number of patients
   n_total <- simpars$ncenters * simpars$npatients
   
@@ -111,8 +108,7 @@ simdata <- function(
 
 setup <- function(tx_alloc_FUN = treatment_alloc_confounding, # Function for treatment allocation
                   delta_xt = 0, # DGM - interaction treatment time
-                  delta_xt2 = 0,
-                  logger) {
+                  delta_xt2 = 0) {
   
   # Default scenario
   npatients <- 500
@@ -143,27 +139,25 @@ setup <- function(tx_alloc_FUN = treatment_alloc_confounding, # Function for tre
 
   # Report the theoretical standard deviation of the mean EDSS across centers
   sd_between_edss_t0 <- sqrt(sd_within_edss_t0**2 + sd_beta1_j**2)
-
-  simpars <- list(npatients = npatients, 
-                  ncenters = ncenters, 
-                  follow_up = follow_up,
-                  sd_a_t = sd_a_t, 
-                  intercept = intercept,
-                  sd_alpha_ij = sd_alpha_ij,
-                  sd_beta1_j = sd_beta1_j,
-                  mean_age = mean_age,
-                  sd_age = sd_age,
-                  min_age = min_age,
-                  beta_age = beta_age,
-                  beta_t = beta_t,
-                  beta_t2 = beta_t2,
-                  delta_xt = delta_xt,
-                  delta_xt2 = delta_xt2,
-                  rho = rho,
-                  corFUN = corFUN,
-                  tx_alloc_FUN = tx_alloc_FUN)
   
-  return(simpars)
+  list(npatients = npatients, 
+       ncenters = ncenters, 
+       follow_up = follow_up,
+       sd_a_t = sd_a_t, 
+       intercept = intercept,
+       sd_alpha_ij = sd_alpha_ij,
+       sd_beta1_j = sd_beta1_j,
+       mean_age = mean_age,
+       sd_age = sd_age,
+       min_age = min_age,
+       beta_age = beta_age,
+       beta_t = beta_t,
+       beta_t2 = beta_t2,
+       delta_xt = delta_xt,
+       delta_xt2 = delta_xt2,
+       rho = rho,
+       corFUN = corFUN,
+       tx_alloc_FUN = tx_alloc_FUN)
 }
 
 logit <- function(x) { 
@@ -211,247 +205,146 @@ treatment_alloc_confounding <- function(age) {
   1/(1 + exp(-(0.7 - 0.032*age - 0.0001*(age**2))))
 }
 
-censor_visits_1 <- function(data, outcome, logger) {
-  
-  data$y_cens <- data[,outcome]
+censor_visits_1 <- function(data, outcome, time_var = "time") {
   
   ncenters <- length(unique(data$centerid))
   
   # Draw the center effects for informative censoring
   u <- rnorm(ncenters, mean = 0, sd = 0.15)
   
-  # Calculate probability of missing
-  # The "average" probability of an observation is expit(-0.5) = 38%
-  data$prob_yobs <- expit(-1.94 + u[data$centerid])
+  prob_yobs <- expit(-1.94 + u[data$centerid])
   
   # By default, we always have a visit for time = 0
-  data$prob_yobs[data$time == 0] <- 1
+  prob_yobs[data[,time_var] == 0] <- 1
   
   # Set y_obs equal to NA where missing
-  data$y_cens[rbinom(nrow(data), size = 1, prob = data$prob_yobs) == 0] <- NA
-  
-  # For each time point, print the empirical probability of an observation
-  #print_visit_probabilities(data)
+  data[rbinom(nrow(data), size = 1, prob = prob_yobs) == 0, outcome] <- NA
   
   data
 }
 
 # and baseline EDSS
-censor_visits_2 <- function(data, outcome, logger) {
+censor_visits_2 <- function(data, outcome, time_var = "time") {
 
-  data$y_cens <- data[,outcome]
-  
-  # Calculate probability of missing
-  data$prob_yobs <- expit(-1.94)
-  
-  # By default, we always have a visit for time = 0
-  data$prob_yobs[data$time == 0] <- 1
+  prob_yobs <- rep(expit(-1.94), nrow(data))
+  prob_yobs[data[,time_var] == 0] <- 1
   
   # Set y_obs equal to NA where missing
-  data$y_cens[rbinom(nrow(data), size = 1, prob = data$prob_yobs) == 0] <- NA
+  data[rbinom(nrow(data), size = 1, prob = prob_yobs) == 0, outcome] <- NA
   
   data
 }
 
 
 # Visits missing according to center and time
-censor_visits_3 <- function(data, outcome, logger) {
-  
-  data$y_cens <- data[,outcome]
+censor_visits_3 <- function(data, outcome, time_var = "time") {
   
   ncenters <- length(unique(data$centerid))
   
   # Draw the center effects for informative censoring
   u <- rnorm(ncenters, mean = 0, sd = 0.15)
   
-  # Calculate probability of missing
-  # The probability of an observation at time 1 is expit(-2.19-1.23*log(1/6)) 
-  data$prob_yobs <- expit(-2.70 + u[data$centerid] - 0.7 * log(data$time/24))
-  
-  # By default, we always have a visit for time = 0
-  data$prob_yobs[data$time == 0] <- 1
+  prob_yobs <- expit(-2.70 + u[data$centerid] - 0.7 * log(data[,time_var]/24))
+  prob_yobs[data[,time_var] == 0] <- 1
   
   # Set y_obs equal to NA where missing
-  data$y_cens[rbinom(nrow(data), size = 1, prob = data$prob_yobs) == 0] <- NA
-  
-  # For each time point, print the empirical probability of an observation
-  #print_visit_probabilities(data) 
+  data[rbinom(nrow(data), size = 1, prob = prob_yobs) == 0, outcome] <- NA
   
   data
 }
 
 
 # Visits missing according to center and time
-censor_visits_4 <- function(data, outcome, logger) {
-  
-  data$y_cens <- data[,outcome]
+censor_visits_4 <- function(data, outcome, time_var = "time") {
   
   ncenters <- length(unique(data$centerid))
   
   # Draw the center effects for informative censoring
   u <- rnorm(ncenters, mean = 0, sd = 0.15)
   
-  # Calculate probability of missing
-  # The "average" probability of an observation is expit(-0.5) = 38%
-  # Check total number of visits
-  # For DMT A: sum( expit(-1.95 - 1.6 * log(1:24/9) - 0)) + 1
-  # For DMT B: sum( expit(-1.95 - 1.6 * log(1:24/9) - 1*1.07)) + 1
-  data$prob_yobs <- expit(-2.31 + u[data$centerid] - 0.5 * log(data$time/36) - data$x*0.8)
-  
-  # By default, we always have a visit for time = 0
-  data$prob_yobs[data$time == 0] <- 1
+  prob_yobs <- expit(-2.31 + u[data$centerid] - 0.5 * log(data[time_var]/36) - data$x*0.8)
+  prob_yobs[data[,time_var] == 0] <- 1
   
   # Set y_obs equal to NA where missing
-  data$y_cens[rbinom(nrow(data), size = 1, prob = data$prob_yobs) == 0] <- NA
-  
-  # For each time point, print the empirical probability of an observation
-  #print_visit_probabilities(data)
+  data[rbinom(nrow(data), size = 1, prob = prob_yobs) == 0, outcome] <- NA
   
   data
 }
 
 
 # Visits missing according to center and time
-censor_visits_5 <- function(data, outcome, logger) {
-  
-  data$y_cens <- data[,outcome]
+censor_visits_5 <- function(data, outcome, time_var = "time") {
   
   ncenters <- length(unique(data$centerid))
   
   # Draw the center effects for informative censoring
   u <- rnorm(ncenters, mean = 0, sd = 0.15)
   
-  # Calculate probability of missing
-  # The "average" probability of an observation is expit(-0.5) = 38%
-  # Check total number of visits
-  # For DMT A: sum( expit(-1.95 - 1.6 * log(1:24/9) - 0)) + 1
-  # For DMT B: sum( expit(-1.95 - 1.6 * log(1:24/9) - 1*1.07)) + 1
-  data$prob_yobs <- expit(-2.31 + u[data$centerid] - 1.1 * log(data$time/36) - data$x*0.8)
-  
-  # By default, we always have a visit for time = 0
-  data$prob_yobs[data$time == 0] <- 1
+  prob_yobs <- expit(-2.31 + u[data$centerid] - 1.1 * log(data[,time_var]/36) - data$x*0.8)
+  prob_yobs[data[,time_var] == 0] <- 1
   
   # Set y_obs equal to NA where missing
-  data$y_cens[rbinom(nrow(data), size = 1, prob = data$prob_yobs) == 0] <- NA
-  
-  # For each time point, print the empirical probability of an observation
-  #print_visit_probabilities(data)
+  data[rbinom(nrow(data), size = 1, prob = prob_yobs) == 0, outcome] <- NA
   
   data
 }
 
 # Visits missing according to center and treatment
-censor_visits_6 <- function(data, outcome, logger) {
-  
-  data$y_cens <- data[,outcome]
+censor_visits_6 <- function(data, outcome, time_var = "time") {
   
   ncenters <- length(unique(data$centerid))
   
   # Draw the center effects for informative censoring
   u <- rnorm(ncenters, mean = 0, sd = 0.15)
   
-  # Calculate probability of missing
-  # The "average" probability of an observation is expit(-0.5) = 38%
-  # Check total number of visits
-  # For DMT A: sum( expit(-1.6 - 0))*60 + 1
-  # For DMT B: sum( expit(-1.6 - 0.7))*60 + 1
-  data$prob_yobs <- expit(-1.6 + u[data$centerid] - data$x*0.7)
-  
-  # By default, we always have a visit for time = 0
-  data$prob_yobs[data$time == 0] <- 1
-  
+  prob_yobs <- expit(-1.6 + u[data$centerid] - data$x*0.7)
+  prob_yobs[data[,time_var] == 0] <- 1
+
   # Set y_obs equal to NA where missing
-  data$y_cens[rbinom(nrow(data), size = 1, prob = data$prob_yobs) == 0] <- NA
-  
-  # For each time point, print the empirical probability of an observation
-  #print_visit_probabilities(data)
+  data[rbinom(nrow(data), size = 1, prob = prob_yobs) == 0, outcome] <- NA
   
   data
 }
 
-
-# Censor visits
-censor_visits_7 <- function(data, outcome, logger) {
+censor_visits_7 <- function(data, outcome, time_var = "time") {
   
-  data$y_cens <- data[,outcome]
-  data$prob_yobs <- 0.03 #changed
-  data$prob_yobs[data$x==0 & data$time%%6 == 0] <- 0.85
-  data$prob_yobs[data$x==1 & data$time%%9 == 0] <- 0.67
-  data$prob_yobs[data$time==0] <- 1
-  
-  # probability of visits
-  # DMT A: sum(c(1, rep(0.03, 5), 0.85, rep(0.03, 5), 0.85, rep(0.03, 5), 0.85, rep(0.03, 5), 0.85))
-  # DMT B: sum(c(1, rep(0.07, 8), 0.85, rep(0.07, 8), 0.85, rep(0.07, 6) ))
-  
+  prob_yobs <- rep(0.03, nrow(data)) 
+  prob_yobs[data$x == 0 & data[,time_var] %% 6 == 0] <- 0.85
+  prob_yobs[data$x == 1 & data[,time_var] %% 9 == 0] <- 0.67
+  prob_yobs[data[,time_var] == 0] <- 1
   
   # Set y_obs equal to NA where missing
-  data$y_cens[rbinom(nrow(data), size = 1, prob = data$prob_yobs)==0] <- NA
+  data[rbinom(nrow(data), size = 1, prob = prob_yobs) == 0, outcome] <- NA
   
   data
 }
 
 
 # 3 vs 9 months schedule
-censor_visits_8 <- function(data, outcome, logger) {
+censor_visits_8 <- function(data, outcome, time_var = "time") {
   
-  data$y_cens <- data[,outcome]
-  data$prob_yobs <- 0.03 #changed
-  data$prob_yobs[data$x==0 & data$time%%3 == 0] <- 0.35
-  data$prob_yobs[data$x==1 & data$time%%9 == 0] <- 0.55
-  data$prob_yobs[data$time==0] <- 1
-  
-  # probability of visits
-  # DMT A: sum(c(1, rep(0.03, 5), 0.85, rep(0.03, 5), 0.85, rep(0.03, 5), 0.85, rep(0.03, 5), 0.85))
-  # DMT B: sum(c(1, rep(0.07, 8), 0.85, rep(0.07, 8), 0.85, rep(0.07, 6) ))
-  
+  prob_yobs <- rep(0.03, nrow(data))
+  prob_yobs[data$x == 0 & data[,time_var] %% 3 == 0] <- 0.35
+  prob_yobs[data$x == 1 & data[,time_var] %% 9 == 0] <- 0.55
+  prob_yobs[data[,time_var] == 0] <- 1
   
   # Set y_obs equal to NA where missing
-  data$y_cens[rbinom(nrow(data), size = 1, prob = data$prob_yobs)==0] <- NA
+  data[rbinom(nrow(data), size = 1, prob = prob_yobs) == 0, outcome] <- NA
   
   data
 }
 
-censor_visits_9 <- function(data, outcome = "y_obs", logger) {
+censor_visits_9 <- function(data, outcome, time_var = "time") {
   
-  data$y_cens <- data[,outcome]
-  
-  # Calculate probability of missing
-  data$prob_yobs <- expit(-0.5  -  0.5 * data$y_dr + 0.5 * data$x)
-  
-  # By default, we always have a visit for time = 0
-  data$prob_yobs[data$time == 0] <- 1
+  prob_yobs <- expit(-0.5  -  0.5 * data[,outcome] + 0.5 * data$x)
+  prob_yobs[data[,time_var] == 0] <- 1
   
   # Set y_obs equal to NA where missing
-  data$y_cens[rbinom(nrow(data), size = 1, prob = data$prob_yobs) == 0] <- NA
+  data[rbinom(nrow(data), size = 1, prob = prob_yobs) == 0, outcome] <- NA
   
   data
 }
 
-censor_visits_10 <- function(data, outcome, logger) {
-  
-  data$y_cens <- data[,outcome]
-  
-  
-  # Identify baseline EDSS for each patient
-  ds_baseline <- data %>% group_by(patid) %>% summarize(y_t0 = y_dr[time == 0])
-  
-  data <- merge(data, ds_baseline, by = "patid")
-  
-  # Make sure to put centerid as first column
-  data <- data %>% relocate(centerid)
-  
-  # Calculate probability of missing
-  data$prob_yobs <- expit(-1.25  - 1 * log(data$y_t0))
-  
-  # By default, we always have a visit for time = 0
-  data$prob_yobs[data$time == 0] <- 1
-  
-  # Set y_obs equal to NA where missing
-  data$y_cens[rbinom(nrow(data), size = 1, prob = data$prob_yobs) == 0] <- NA
-  
-  
-  data
-}
 
 convert_to_EDSS_scale <- function(x) {
   x <- round(x*2)/2
