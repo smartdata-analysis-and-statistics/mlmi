@@ -3,16 +3,10 @@
 #####################################################
 source("R/dgm.r")
 
-#####################################################
-# Initialize background processes
-#####################################################
-logger <- flog.namespace() # Initiate Logger
+# Set up the data-generating mechanism
+simpars <- setup() 
 
-#####################################################
-# Generate a dataset
-#####################################################
+# Generate a dataset without missings
+dat <- simdata(simpars)
 
-simpars <- load_scenario(censorFUN = censor_visits_7,
-                         tx_alloc_FUN = treatment_alloc_confounding,
-                         logger = logger) 
-dat <- simdata(simpars, logger)
+#censorFUN = censor_visits_7,

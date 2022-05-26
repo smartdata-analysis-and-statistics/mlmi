@@ -3,9 +3,9 @@
 #library(Matrix)
 #library(sparseMVN)
 #library(stringr)
+library(truncnorm)
 library(MASS)
 library(mvtnorm)
-library(futile.logger)
 library(nlme)
 
 options(dplyr.summarise.inform = FALSE)
@@ -16,8 +16,6 @@ simdata <- function(
   logger,
   quiet = FALSE
 ) {
-  require(truncnorm)
-  
   # Identify total number of patients
   n_total <- simpars$ncenters * simpars$npatients
   
@@ -37,7 +35,7 @@ simdata <- function(
                     mean = simpars$mean_age, 
                     sd = simpars$sd_age)
   
-  # Allocate treatment for all patients. If applicable, make use of baseline info
+  # Allocate treatment for all patients
   ptreat <- simpars$tx_alloc_FUN(age = age) 
   xtreat <- rbinom(n = n_total, size = 1, prob = ptreat)
   
@@ -53,11 +51,6 @@ simdata <- function(
   # Draw epsilon
   epsilon_tij_x0 <-  mvrnorm(n = n_total, mu = rep(0, length(ytimes)), Sigma = sigma_alpha)
   epsilon_tij_x1 <-  mvrnorm(n = n_total, mu = rep(0, length(ytimes)), Sigma = sigma_alpha)
-  
-  # Empirical distributions
-  #flog.info(msg = paste("Empirical distribution of alpha_ij has mean", mean(alpha_ij), "and standard deviation", sd(alpha_ij)), name = logger)
-  #flog.info(msg = paste("Empirical distribution of beta_1j has mean", mean(beta_1j), "and standard deviation", sd(beta_1j)), name = logger)
-  
   
   # Generate matrices with disease trajectory for eacht patient
   delta_baseline <- matrix(simpars$intercept, nrow = n_total, ncol = length(ytimes))
@@ -91,11 +84,16 @@ simdata <- function(
   
   
   mat <- matrix(NA, nrow = (n_total * length(ytimes)), ncol = 13)
-  colnames(mat) <- c("centerid", "patid", "dgm_alpha_ij", "dgm_beta_1j", "x",
-                     "age", "time", "l_x0", "l_x1", "l_dr", "edss_x0", "edss_x1", "y_dr")
+  colnames(mat) <- c("centerid", 
+                     "patid", 
+                     "dgm_alpha_ij", 
+                     "dgm_beta_1j", 
+                     "x",
+                     "age", 
+                     "time", "l_x0", "l_x1", "l_dr", "edss_x0", "edss_x1", "y_dr")
   
   mat[,"centerid"] <- rep(centerid, each = length(ytimes))
-  mat[, "patid"] <- rep(seq_along(1:n_total), each = length(ytimes))
+  mat[, "patid"] <- rep(seq(n_total), each = length(ytimes))
   mat[, "dgm_alpha_ij"] <- as.vector(t(delta_patient))
   mat[, "dgm_beta_1j"] <- as.vector(t(delta_cluster))
   mat[, "x"] <- rep(xtreat, each = length(ytimes)) # Received treatment
@@ -111,18 +109,18 @@ simdata <- function(
   data.frame(mat)
 }
 
-load_scenario <- function(censorFUN, # Function for censoring 
-                          tx_alloc_FUN, # Function for treatment allocation
-                          delta_xt = 0, # DGM - interaction treatment time
-                          delta_xt2 = 0,
-                          logger) {
+setup <- function(tx_alloc_FUN = treatment_alloc_confounding, # Function for treatment allocation
+                  delta_xt = 0, # DGM - interaction treatment time
+                  delta_xt2 = 0,
+                  logger) {
+  
   # Default scenario
   npatients <- 500
   ncenters <- 20
   follow_up <- 12*5 # Total follow-up (number of months)
-  sd_a_t <- 0.5 ##0.2          # DGM - Within-visit variation in EDSS scores
-  intercept <- 1.3295 #2.78       # DGM - Mean baseline EDDS score
-  sd_alpha_ij <- 1.46#9    # DGM - Between-subject variation in baseline EDSS
+  sd_a_t <- 0.5          # DGM - Within-visit variation in EDSS scores
+  intercept <- 1.3295    # DGM - Mean baseline EDDS score
+  sd_alpha_ij <- 1.46    # DGM - Between-subject variation in baseline EDSS
   sd_beta1_j <- 0.20     # DGM - Between-site variation in baseline EDSS
   
   # Distribution of age
@@ -131,32 +129,21 @@ load_scenario <- function(censorFUN, # Function for censoring
   min_age <- 18
   
   # Prognostic effects
-  beta_age <- 0.05 #0.125 #0.018      # DGM - prognostic effect of age
-  beta_t <- 0.014 #0.07 #0.02         # DGM - prognostic effect of time
-  beta_t2 <- 0#-0.0003     # DGM - prognostic effect of time squared
-  rho <- 0.8             # DGM - autocorrelation of between alpha_tij
-  corFUN <- corAR1       # DGM - correlation structure of the latent EDSS scores
+  beta_age <- 0.05 # DGM - prognostic effect of age
+  beta_t <- 0.014  # DGM - prognostic effect of time
+  beta_t2 <- 0     # DGM - prognostic effect of time squared
+  rho <- 0.8       # DGM - autocorrelation of between alpha_tij
+  corFUN <- corAR1 # DGM - correlation structure of the latent EDSS scores
   
   # Report the theoretical mean EDSS at baseline
   mean_edss_t0 <- intercept + beta_age * mean_age
-  flog.info(paste("Mean EDSS at baseline:", mean_edss_t0))
-  
+
   # Report the theoretical standard deviation of the baseline EDSS within each center
   sd_within_edss_t0 <- sqrt(sd_alpha_ij**2 + (beta_age**2) * (sd_age**2) +  sd_a_t**2)
-  flog.info(paste("Within-center SD of EDSS at baseline:", sd_within_edss_t0))
-  
+
   # Report the theoretical standard deviation of the mean EDSS across centers
   sd_between_edss_t0 <- sqrt(sd_within_edss_t0**2 + sd_beta1_j**2)
-  flog.info(paste("Between-center SD of EDSS at baseline:", sd_between_edss_t0))
-  
-  # Report the treatment effect
-  if (delta_xt == 0 & delta_xt2 == 0) {
-    flog.info("Absence of treatment effect")
-  } else {
-    flog.info(paste("Presence of treatment effect: delta = (", delta_xt, "*time) + (", delta_xt2, "*time^2)", sep = ""))
-  }
-  
-  
+
   simpars <- list(npatients = npatients, 
                   ncenters = ncenters, 
                   follow_up = follow_up,
@@ -173,11 +160,10 @@ load_scenario <- function(censorFUN, # Function for censoring
                   delta_xt = delta_xt,
                   delta_xt2 = delta_xt2,
                   rho = rho,
-                  censorFUN = censorFUN,
                   corFUN = corFUN,
                   tx_alloc_FUN = tx_alloc_FUN)
   
-  simpars
+  return(simpars)
 }
 
 logit <- function(x) { 
@@ -227,8 +213,6 @@ treatment_alloc_confounding <- function(age) {
 
 censor_visits_1 <- function(data, outcome, logger) {
   
-  flog.info(msg = "Introducing missing patient visits according to a logistic model, based on center", name = logger)
-  
   data$y_cens <- data[,outcome]
   
   ncenters <- length(unique(data$centerid))
@@ -254,9 +238,7 @@ censor_visits_1 <- function(data, outcome, logger) {
 
 # and baseline EDSS
 censor_visits_2 <- function(data, outcome, logger) {
-  
-  flog.info(msg = "Introducing missing patient visits according to MCAR", name = logger)
-  
+
   data$y_cens <- data[,outcome]
   
   # Calculate probability of missing
@@ -274,8 +256,6 @@ censor_visits_2 <- function(data, outcome, logger) {
 
 # Visits missing according to center and time
 censor_visits_3 <- function(data, outcome, logger) {
-  
-  flog.info(msg = "Introducing missing patient visits according to a logistic model, based on center and time", name = logger)
   
   data$y_cens <- data[,outcome]
   
@@ -303,8 +283,6 @@ censor_visits_3 <- function(data, outcome, logger) {
 
 # Visits missing according to center and time
 censor_visits_4 <- function(data, outcome, logger) {
-  
-  flog.info(msg = "Introducing missing patient visits according to a logistic model, based on center, time and treatment", name = logger)
   
   data$y_cens <- data[,outcome]
   
@@ -336,8 +314,6 @@ censor_visits_4 <- function(data, outcome, logger) {
 # Visits missing according to center and time
 censor_visits_5 <- function(data, outcome, logger) {
   
-  flog.info(msg = "Introducing missing patient visits according to a logistic model, based on center", name = logger)
-  
   data$y_cens <- data[,outcome]
   
   ncenters <- length(unique(data$centerid))
@@ -366,8 +342,6 @@ censor_visits_5 <- function(data, outcome, logger) {
 
 # Visits missing according to center and treatment
 censor_visits_6 <- function(data, outcome, logger) {
-  
-  flog.info(msg = "Introducing missing patient visits according to a logistic model, based on center and treatment", name = logger)
   
   data$y_cens <- data[,outcome]
   
@@ -399,8 +373,6 @@ censor_visits_6 <- function(data, outcome, logger) {
 # Censor visits
 censor_visits_7 <- function(data, outcome, logger) {
   
-  flog.info(msg = "Introducing informative patient visit patterns at times (3,6,9,...) for control and at times (9,18,27) for treated", name = logger)
-  
   data$y_cens <- data[,outcome]
   data$prob_yobs <- 0.03 #changed
   data$prob_yobs[data$x==0 & data$time%%6 == 0] <- 0.85
@@ -422,8 +394,6 @@ censor_visits_7 <- function(data, outcome, logger) {
 # 3 vs 9 months schedule
 censor_visits_8 <- function(data, outcome, logger) {
   
-  flog.info(msg = "Introducing informative patient visit patterns at times (3,6,9,...) for control and at times (9,18,27) for treated", name = logger)
-  
   data$y_cens <- data[,outcome]
   data$prob_yobs <- 0.03 #changed
   data$prob_yobs[data$x==0 & data$time%%3 == 0] <- 0.35
@@ -443,8 +413,6 @@ censor_visits_8 <- function(data, outcome, logger) {
 
 censor_visits_9 <- function(data, outcome = "y_obs", logger) {
   
-  flog.info(msg = "Introducing missing patient visits according to a logistic model", name = logger)
-  
   data$y_cens <- data[,outcome]
   
   # Calculate probability of missing
@@ -460,8 +428,6 @@ censor_visits_9 <- function(data, outcome = "y_obs", logger) {
 }
 
 censor_visits_10 <- function(data, outcome, logger) {
-  
-  flog.info(msg = "Introducing missing patient visits according to a logistic model, based on baseline EDSS", name = logger)
   
   data$y_cens <- data[,outcome]
   
