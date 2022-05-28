@@ -75,7 +75,7 @@ plot_max_fup <- function(dat,
   ggplot(plotdat, aes(x = centerid, y = max_fup, fill = Treatment)) + 
     geom_boxplot() + 
     ylab("Maximum follow-up (months)") +
-    xlab("MS center") +
+    xlab("Center") +
     scale_fill_brewer(palette = "Blues")
 }
   

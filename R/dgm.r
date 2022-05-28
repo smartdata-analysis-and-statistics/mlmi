@@ -112,8 +112,8 @@ setup <- function(tx_alloc_FUN = treatment_alloc_confounding, # Function for tre
                   delta_xt2 = 0) {
   
   # Default scenario
-  npatients <- 500
-  ncenters <- 20
+  npatients <- 250 # Total number of patients per center
+  ncenters <- 10
   follow_up <- 12*5 # Total follow-up (number of months)
   sd_a_t <- 0.5          # DGM - Within-visit variation in EDSS scores
   intercept <- 1.3295    # DGM - Mean baseline EDDS score
