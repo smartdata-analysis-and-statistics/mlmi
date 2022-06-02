@@ -78,4 +78,41 @@ plot_max_fup <- function(dat,
     xlab("Center") +
     scale_fill_brewer(palette = "Blues")
 }
+
+
+plot_imputed_trajectories <- function(fits, 
+                                      sel_patid = 1,
+                                      outcome_var = "edss",
+                                      treat_var = "trt",
+                                      time_var = "time",
+                                      col.imputed = "#999999", 
+                                      plot.imp = 4) {
+  
+  dat_pat_imputed <- NULL
+  dat_pat_orig <- subset(complete(fits, 0), patid == sel_patid)
+  dat_pat_orig <- rename(dat_pat_orig, time = time_var)
+  
+  for (i in seq(min(plot.imp, fits$m))) {
+    dat_pat <- subset(complete(fits, i), patid == sel_patid)
+    dat_pat <- rename(dat_pat, y_imputed = outcome_var)
+    dat_pat$source <- ifelse(!is.na(dat_pat_orig[,outcome_var]),"Observed", "Imputed")
+    dat_pat$imputation <- i
+    dat_pat_imputed <- rbind(dat_pat_imputed, dat_pat)
+  }
+  dat_pat_imputed <- rename(dat_pat_imputed, time = time_var)
+  
+
+  g <- ggplot(dat_pat_imputed, aes(x = time, y = y_imputed, group = source)) +
+    geom_point(aes(shape = source, color = source), size = 4) +
+    scale_color_manual(values = c('#000000', col.imputed )) +
+    ylim(0,8) +
+    xlab("Days elapsed since treatment start") +
+    ylab("EDSS") +
+    theme(legend.title = element_blank()) +
+    theme(legend.position = "bottom") +
+    facet_wrap(~imputation, ncol = 2)
+  return(g)
+  
+  
+}
   

@@ -12,7 +12,7 @@ mice.impute.mlmi <- function(y, ry, x, type, wy = NULL, intercept = TRUE,
   clust <- names(type[type == -3]) # Patient
   rande <- names(type[type == 2])
   group <- names(type[type == -2]) # Center
-  time <- names(type[type == 6]) # Time
+  time <- names(type[type == 6]) # Time will be treated as a fixed effect and also be used to define the autocorrelation
   
   fixe <- names(type[type > 0])
   lev <- unique(x[, clust])
@@ -70,9 +70,6 @@ mice.impute.mlmi <- function(y, ry, x, type, wy = NULL, intercept = TRUE,
     # Derive SE for the between-study SD directly from lme4
     tau_patient_star <- exp(rnorm(n = 1, mean = log((fit_intervals$reStruct[[clust]])["sd((Intercept))","est."]), sd = se_log_tau_patient))
     psi_clust_star <- tau_patient_star**2
-    
-    # Ignore se_log_tau_center because it is too large
-    
   }
   
   psi_star <- as.numeric(psi_group_star + psi_clust_star)

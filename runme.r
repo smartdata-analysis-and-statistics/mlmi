@@ -21,7 +21,9 @@ plot_dens_x(misdat, x_var = "age", x_label = "Age")
 # Visualize the total follow-up for each center
 plot_max_fup(misdat)
 
+# Run the imputation. There is no need for a Gibbs sampler since we only have missing outcome data
 imptimes <- seq(0, 60, by = 3) # Which time points do we need imputations?
 imp <- impute(misdat, times = imptimes, maxit = 1)
 
 # Visualize the imputed trajectory of one patient
+plot_imputed_trajectories(imp)
