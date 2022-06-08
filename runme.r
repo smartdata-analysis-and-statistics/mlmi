@@ -29,5 +29,5 @@ imp <- impute(misdat, times = imptimes, maxit = 1)
 # Visualize the imputed trajectory of one patient
 plot_imputed_trajectories(imp)
 
-# Compare all imputation methods in a single simulation run
+# Compare all imputation methods in a single simulation
 run_sim(simpars, censor_visits_7, seed = 101)

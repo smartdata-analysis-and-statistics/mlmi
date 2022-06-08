@@ -82,9 +82,9 @@ impute_y_rounding <- function(data,
 
 
 evaluate_rmse <- function(data,
-                          outcome_var = "edss", 
-                          orig_outcome_var = "edss_orig", 
-                          y_label, 
+                          outcome_var = "edss",  # Variable that contains the incomplete data
+                          orig_outcome_var = "edss_orig", # Variable that contains the original data
+                          y_label, # Variable that contains the imputed data
                           window_size = 1) {
   
   data <- rename(data, y = outcome_var)
@@ -94,6 +94,40 @@ evaluate_rmse <- function(data,
   
   rmse <- sqrt(mean((impdata[,y_label] - impdata[,orig_outcome_var])**2))
   data.frame(nobs_imputed = nrow(impdata), rmse = rmse)
+}
+
+evaluate_reference <- function(data,
+                               window_size = 3,
+                               confirmation_window = 1) {
+  
+  # Derive TTE set for the original data
+  prog_data <- derive_cdp(data = data, 
+                          outcome_var = "edss_orig",
+                          window_size = window_size,
+                          confirmation_window = confirmation_window,
+                          extrapolate = "all") 
+  
+  # Derive treatment effect for the original data
+  fit <- ipwCoxCluster(data.frame(prog_data), 
+                       indID = "centerid", 
+                       indA = "x", 
+                       indX = c("age", "edss_baseval"), 
+                       indStatus = "event", 
+                       indTime = "tte", 
+                       ties = "breslow",
+                       confidence = 0.95)
+  
+  
+  # Return the effect size and standard error
+  data.frame("method" = "Reference",
+             "est_logHR" = fit["conventional weights","log HR Estimate"], # Estimated logHR
+             "est_HR" = fit["conventional weights","HR Estimate"], # Estimated HR
+             "est_HR_CIl" = fit["conventional weights","HR 95% CI-low"], 
+             "est_HR_CIu" = fit["conventional weights","HR 95% CI-up"],  
+             "window" = window_size,
+             "confirmation" = confirmation_window,
+             "nobs_imputed" = 0,
+             "rmse" = 0)
 }
 
 evaluate_locf <- function(data, 
@@ -112,9 +146,9 @@ evaluate_locf <- function(data,
   # Convert longitudinal data to TTE dataset
   prog_data <- derive_cdp(data = impdata,
                           outcome_var = "y_imp_locf",
-                                window_size = window_size, 
-                                confirmation_window = confirmation_window,
-                                extrapolate = extrapolate_cdp) 
+                          window_size = window_size, 
+                          confirmation_window = confirmation_window,
+                          extrapolate = extrapolate_cdp) 
   
   # Estimate the marginal treatment effect
   fit <- ipwCoxCluster(data.frame(prog_data), 
@@ -252,39 +286,7 @@ run_sim <- function(simpars,
              row.names = NULL)
 }
 
-evaluate_reference <- function(data,
-                                   window_size = 3,
-                                   confirmation_window = 1) {
 
-  # Derive TTE set for the original data
-  prog_data <- derive_cdp(data = data, 
-                          outcome_var = "edss_orig",
-                          window_size = window_size,
-                          confirmation_window = confirmation_window,
-                          extrapolate = "all") 
-  
-  # Derive treatment effect for the original data
-  fit <- ipwCoxCluster(data.frame(prog_data), 
-                       indID = "centerid", 
-                       indA = "x", 
-                       indX = c("age", "edss_baseval"), 
-                       indStatus = "event", 
-                       indTime = "tte", 
-                       ties = "breslow",
-                       confidence = 0.95)
-  
-  
-  # Return the effect size and standard error
-  data.frame("method" = "Reference (OBS)",
-             "est_logHR" = fit["conventional weights","log HR Estimate"], # Estimated logHR
-             "est_HR" = fit["conventional weights","HR Estimate"], # Estimated HR
-             "est_HR_CIl" = fit["conventional weights","HR 95% CI-low"], 
-             "est_HR_CIu" = fit["conventional weights","HR 95% CI-up"],  
-             "window" = window_size,
-             "confirmation" = confirmation_window,
-             "nobs_imputed" = 0,
-             "rmse" = 0)
-}
 
 derive_cdp  <- function(data, 
                         outcome_var = "edss",
