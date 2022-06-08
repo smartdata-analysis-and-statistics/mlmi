@@ -37,6 +37,50 @@ impute_y_locf <- function(data,
   data
 }
 
+impute_y_rounding <- function(data,
+                              outcome_var = "edss") {
+
+  ytimes <- 0:max(data$time)
+  y_cens <- array(NA, dim = c(length(unique(data$patid)), length(ytimes)))
+  
+  for (i in 1:length(ytimes)) {
+    y_cens[,i] <- subset(data, time == ytimes[i])[,outcome_var]
+  }
+  
+  y_imputed <- y_cens
+  
+  y_obs <- array(0, dim = dim(y_cens))
+  y_obs[!is.na(y_cens)] <- 1
+  
+  
+  to_impute <- which(is.na(y_cens), arr.ind = TRUE)
+  pb <- txtProgressBar(min = 0, max = nrow(to_impute), style = 3)
+  for (i in 1:nrow(to_impute)) {
+    # Retrieve column and row
+    col <- to_impute[i, "col"]
+    row <- to_impute[i, "row"]
+    
+    # Identify imputation sources
+    imp_source <- which(y_obs[row,] == 1)
+    
+    # Identify imputation distance
+    imp_cols <- abs(col - imp_source)
+    
+    # Impute!
+    y_imputed[row, col] <- mean(y_cens[row,imp_source[which(imp_cols == min(imp_cols))]])
+    
+    # Update progress bar
+    setTxtProgressBar(pb, i)
+  }
+  close(pb)
+  
+  # Fill in imputations
+  data$y_imp_rounding <- as.vector(t(y_imputed))
+  
+  data
+}
+
+
 evaluate_rmse <- function(data,
                           outcome_var = "edss", 
                           orig_outcome_var = "edss_orig", 
@@ -56,8 +100,8 @@ evaluate_locf <- function(data,
                           window_size, 
                           confirmation_window,
                           extrapolate_cdp,
-                          method_lbl = "LOCF" 
-) {
+                          method_lbl = "LOCF") 
+  {
   
   # Generate imputed dataset according to LOCF
   impdata <- impute_y_locf(data) 
@@ -66,7 +110,8 @@ evaluate_locf <- function(data,
   q_imp <- evaluate_rmse(impdata, y_label =  "y_imp_locf", window_size = window_size)
   
   # Convert longitudinal data to TTE dataset
-  prog_data <- derive_cdp(data = impdata, 
+  prog_data <- derive_cdp(data = impdata,
+                          outcome_var = "y_imp_locf",
                                 window_size = window_size, 
                                 confirmation_window = confirmation_window,
                                 extrapolate = extrapolate_cdp) 
@@ -82,6 +127,49 @@ evaluate_locf <- function(data,
                        confidence = 0.95)
 
   
+  # Return the effect size and standard error
+  data.frame("method" = method_lbl,
+             "est_logHR" = fit["conventional weights","log HR Estimate"], # Estimated logHR
+             "est_HR" = fit["conventional weights","HR Estimate"], # Estimated logHR
+             "est_HR_CIl" = fit["conventional weights","HR 95% CI-low"], 
+             "est_HR_CIu" = fit["conventional weights","HR 95% CI-up"],  
+             "window" = window_size, 
+             "confirmation" = confirmation_window,
+             "nobs_imputed" = q_imp$nobs_imputed,
+             "rmse" = q_imp$rmse)
+}
+
+evaluate_rounding <- function(data, 
+                              window_size, 
+                              confirmation_window,
+                              extrapolate_cdp,
+                              method_lbl = "Rounding"
+) {
+  
+  # Generate imputed dataset according to Rounding
+  impdata <- impute_y_rounding(data)
+  
+  # Identify number of imputed values and their RMSE
+  q_imp <- evaluate_rmse(impdata, y_label =  "y_imp_rounding", window_size = window_size)
+  
+  # Convert longitudinal data to TTE dataset
+  prog_data <- derive_cdp(data = impdata, 
+                          outcome_var = "y_imp_rounding",
+                          window_size = window_size,
+                          confirmation_window = confirmation_window,
+                          extrapolate = extrapolate_cdp) 
+  
+  # Estimate the marginal treatment effect
+  fit <- ipwCoxCluster(data.frame(prog_data), 
+                       indID = "centerid", 
+                       indA = "x", 
+                       indX = c("age", "edss_baseval"), 
+                       indStatus = "event", 
+                       indTime = "tte", 
+                       ties = "breslow",
+                       confidence = 0.95)
+  
+
   # Return the effect size and standard error
   data.frame("method" = method_lbl,
              "est_logHR" = fit["conventional weights","log HR Estimate"], # Estimated logHR
@@ -143,6 +231,12 @@ run_sim <- function(simpars,
                                                confirmation_window = confirmation_window, 
                                                extrapolate_cdp = extrapolate_cdp,
                                                method_lbl = "LOCF"))
+  
+  results <- results %>% add_row(evaluate_rounding(data = misdat, 
+                                               window_size = window_size, 
+                                               confirmation_window = confirmation_window, 
+                                               extrapolate_cdp = extrapolate_cdp,
+                                               method_lbl = "Rounding"))
   
  
   # Get system info

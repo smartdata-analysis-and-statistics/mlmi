@@ -1,6 +1,7 @@
 source("R/dgm.r")
 source("R/vis.r")
 source("R/imp.r")
+source("R/sim.r")
 
 # Set up the data-generating mechanism
 # Introduce a modest treatment effect of 0.007 change in EDSS per day
@@ -28,6 +29,5 @@ imp <- impute(misdat, times = imptimes, maxit = 1)
 # Visualize the imputed trajectory of one patient
 plot_imputed_trajectories(imp)
 
-
-# Run one simulation 
+# Compare all imputation methods in a single simulation run
 run_sim(simpars, censor_visits_7, seed = 101)
