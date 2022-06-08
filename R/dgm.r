@@ -63,7 +63,6 @@ sim_data <- function(simpars) {
                        nrow = n_total, ncol = length(ytimes), byrow = TRUE) 
   
   # Treatment effect for received treatment
-  
   delta_x1 <- matrix(simpars$delta_xt * ytimes + simpars$delta_xt2 * (ytimes**2), 
                      nrow = n_total, ncol = length(ytimes), byrow = TRUE)
   
@@ -209,7 +208,9 @@ treatment_alloc_confounding <- function(age) {
 censor_visits_1 <- function(data, 
                             outcome_var = "edss", # The outcome variable 
                             treat_var = "trt",
-                            time_var = "time") {
+                            time_var = "time",
+                            keep_baseline_visit = FALSE, # Do we have a visit for time 0?
+                            remove_missing_visits = TRUE) {
   
   ncenters <- length(unique(data$centerid))
   
@@ -217,23 +218,40 @@ censor_visits_1 <- function(data,
   
   prob_yobs <- expit(-1.94 + u[data$centerid])
   
+  if (keep_baseline_visit) {
+    prob_yobs[data$time == 0] <- 1
+  }
+  
   # Set outcome to NA where missing
   data[rbinom(nrow(data), size = 1, prob = prob_yobs) == 0, outcome_var] <- NA
   
-  data %>% na.omit()
+  if (remove_missing_visits) {
+    return(data %>% na.omit())
+  }
+  return(data)
+  
 }
 
 censor_visits_2 <- function(data, 
                             outcome_var = "edss",
                             treat_var = "trt",
-                            time_var = "time") {
+                            time_var = "time",
+                            keep_baseline_visit = FALSE, # Do we have a visit for time 0?
+                            remove_missing_visits = TRUE) {
 
   prob_yobs <- rep(expit(-1.94), nrow(data))
+  
+  if (keep_baseline_visit) {
+    prob_yobs[data$time == 0] <- 1
+  }
 
   # Set outcome to NA where missing
   data[rbinom(nrow(data), size = 1, prob = prob_yobs) == 0, outcome_var] <- NA
   
-  data %>% na.omit()
+  if (remove_missing_visits) {
+    return(data %>% na.omit())
+  }
+  return(data)
 }
 
 
@@ -241,7 +259,9 @@ censor_visits_2 <- function(data,
 censor_visits_3 <- function(data,
                             outcome_var = "edss",
                             treat_var = "trt",
-                            time_var = "time") {
+                            time_var = "time",
+                            keep_baseline_visit = FALSE, # Do we have a visit for time 0?
+                            remove_missing_visits = TRUE) {
   
   ncenters <- length(unique(data$centerid))
   
@@ -250,16 +270,25 @@ censor_visits_3 <- function(data,
   
   prob_yobs <- expit(-2.70 + u[data$centerid] - 0.7 * log(data[,time_var]/24))
   
+  if (keep_baseline_visit) {
+    prob_yobs[data$time == 0] <- 1
+  }
+  
   # Set outcome to NA where missing
   data[rbinom(nrow(data), size = 1, prob = prob_yobs) == 0, outcome_var] <- NA
   
-  data %>% na.omit()
+  if (remove_missing_visits) {
+    return(data %>% na.omit())
+  }
+  return(data)
 }
 
 censor_visits_4 <- function(data, 
                             outcome_var = "edss",
                             treat_var = "trt",
-                            time_var = "time") {
+                            time_var = "time",
+                            keep_baseline_visit = FALSE, # Do we have a visit for time 0?
+                            remove_missing_visits = TRUE) {
   
   ncenters <- length(unique(data$centerid))
   
@@ -268,16 +297,25 @@ censor_visits_4 <- function(data,
   
   prob_yobs <- expit(-2.31 + u[data$centerid] - 0.5 * log(data[,time_var]/36) - data[,treat_var]*0.8)
   
+  if (keep_baseline_visit) {
+    prob_yobs[data$time == 0] <- 1
+  }
+  
   # Set outcome to NA where missing
   data[rbinom(nrow(data), size = 1, prob = prob_yobs) == 0, outcome_var] <- NA
   
-  data %>% na.omit()
+  if (remove_missing_visits) {
+    return(data %>% na.omit())
+  }
+  return(data)
 }
 
 censor_visits_5 <- function(data,
                             outcome_var = "edss",
                             treat_var = "trt",
-                            time_var = "time") {
+                            time_var = "time",
+                            keep_baseline_visit = FALSE, # Do we have a visit for time 0?
+                            remove_missing_visits = TRUE) {
   
   ncenters <- length(unique(data$centerid))
   
@@ -285,26 +323,42 @@ censor_visits_5 <- function(data,
   u <- rnorm(ncenters, mean = 0, sd = 0.15)
   
   prob_yobs <- expit(-1.6 + u[data$centerid] - data[,treat_var]*0.7)
+  
+  if (keep_baseline_visit) {
+    prob_yobs[data$time == 0] <- 1
+  }
 
   # Set outcome to NA where missing
   data[rbinom(nrow(data), size = 1, prob = prob_yobs) == 0, outcome_var] <- NA
   
-  data %>% na.omit()
+  if (remove_missing_visits) {
+    return(data %>% na.omit())
+  }
+  return(data)
 }
 
 censor_visits_6 <- function(data, 
                             outcome_var = "edss",
                             treat_var = "trt",
-                            time_var = "time") {
+                            time_var = "time",
+                            keep_baseline_visit = FALSE, # Do we have a visit for time 0?
+                            remove_missing_visits = TRUE) {
   
   prob_yobs <- rep(0.03, nrow(data)) 
   prob_yobs[data[,treat_var] == 0 & data[,time_var] %% 6 == 0] <- 0.85
   prob_yobs[data[,treat_var] == 1 & data[,time_var] %% 9 == 0] <- 0.67
+  
+  if (keep_baseline_visit) {
+    prob_yobs[data$time == 0] <- 1
+  }
 
   # Set outcome to NA where missing
   data[rbinom(nrow(data), size = 1, prob = prob_yobs) == 0, outcome_var] <- NA
   
-  data %>% na.omit()
+  if (remove_missing_visits) {
+    return(data %>% na.omit())
+  }
+  return(data)
 }
 
 
@@ -312,30 +366,48 @@ censor_visits_6 <- function(data,
 censor_visits_7 <- function(data, 
                             outcome_var = "edss",
                             treat_var = "trt",
-                            time_var = "time") {
+                            time_var = "time",
+                            keep_baseline_visit = FALSE, # Do we have a visit for time 0?
+                            remove_missing_visits = TRUE) {
   
   prob_yobs <- rep(0.03, nrow(data))
   prob_yobs[data[,treat_var] == 0 & data[,time_var] %% 3 == 0] <- 0.35
   prob_yobs[data[,treat_var] == 1 & data[,time_var] %% 9 == 0] <- 0.55
   
+  if (keep_baseline_visit) {
+    prob_yobs[data$time == 0] <- 1
+  }
+  
   # Set outcome to NA where missing
   data[rbinom(nrow(data), size = 1, prob = prob_yobs) == 0, outcome_var] <- NA
   
-  data %>% na.omit()
+  if (remove_missing_visits) {
+    return(data %>% na.omit())
+  }
+  return(data)
 }
 
 censor_visits_8 <- function(data, 
                             outcome_var = "edss",
                             treat_var = "trt",
-                            time_var = "time") {
+                            time_var = "time",
+                            keep_baseline_visit = FALSE, # Do we have a visit for time 0?
+                            remove_missing_visits = TRUE) {
   
   # Define MNAR model
   prob_yobs <- expit(-0.5  -  0.5 * data[,outcome_var] + 0.5 * data[,treat_var])
+  
+  if (keep_baseline_visit) {
+    prob_yobs[data$time == 0] <- 1
+  }
 
   # Set outcome to NA where missing
   data[rbinom(nrow(data), size = 1, prob = prob_yobs) == 0, outcome_var] <- NA
   
-  data %>% na.omit()
+  if (remove_missing_visits) {
+    return(data %>% na.omit())
+  }
+  return(data)
 }
 
 
