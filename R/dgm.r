@@ -10,6 +10,24 @@ library(nlme)
 
 options(dplyr.summarise.inform = FALSE)
 
+
+# convert correlation matrix to covariance matrix 
+cor2cov <- function(sd, rho) {
+  if (length(sd) != nrow(rho) & length(sd) != ncol(rho)) {
+    stop("Invalid dimensions of 'sd' and/or 'rho'")
+  }
+  D <- diag(sd, nrow = length(sd), ncol = length(sd))
+  vmat <- D %*% rho %*% D
+  return(vmat)
+}
+
+convert_to_EDSS_scale <- function(x) {
+  x <- round(x*2)/2
+  x[which(x < 0)] <- 0
+  x[which(x > 9.5)] <- 9.5
+  return(x)
+}
+
 #Generate  EDSS outcomes without any noise (simplified DGM by Gabrielle)
 sim_data <- function(simpars) {
   
@@ -187,15 +205,6 @@ cor_none <- function(time1, time2) {
   cor_comp_symm(time1, time2, rho = 0)
 }
 
-# convert correlation matrix to covariance matrix 
-cor2cov <- function(sd, rho) {
-  if (length(sd) != nrow(rho) & length(sd) != ncol(rho)) {
-    stop("Invalid dimensions of 'sigma' and/or 'rho'")
-  }
-  D <- diag(sd, nrow = length(sd), ncol = length(sd))
-  vmat <- D %*% rho %*% D
-  vmat
-}
 
 treatment_alloc_randomized <- function(age) {
   0.5
@@ -210,7 +219,8 @@ censor_visits_1 <- function(data,
                             treat_var = "trt",
                             time_var = "time",
                             keep_baseline_visit = FALSE, # Do we have a visit for time 0?
-                            remove_missing_visits = TRUE) {
+                            remove_missing_visits = TRUE,
+                            save_prob_y_obs = FALSE) {
   
   ncenters <- length(unique(data$centerid))
   
@@ -220,6 +230,9 @@ censor_visits_1 <- function(data,
   
   if (keep_baseline_visit) {
     prob_yobs[data$time == 0] <- 1
+  }
+  if (save_prob_y_obs) {
+    data$prob_yobs <- prob_yobs
   }
   
   # Set outcome to NA where missing
@@ -237,12 +250,16 @@ censor_visits_2 <- function(data,
                             treat_var = "trt",
                             time_var = "time",
                             keep_baseline_visit = FALSE, # Do we have a visit for time 0?
-                            remove_missing_visits = TRUE) {
+                            remove_missing_visits = TRUE,
+                            save_prob_y_obs = FALSE) {
 
   prob_yobs <- rep(expit(-1.94), nrow(data))
   
   if (keep_baseline_visit) {
     prob_yobs[data$time == 0] <- 1
+  }
+  if (save_prob_y_obs) {
+    data$prob_yobs <- prob_yobs
   }
 
   # Set outcome to NA where missing
@@ -261,7 +278,8 @@ censor_visits_3 <- function(data,
                             treat_var = "trt",
                             time_var = "time",
                             keep_baseline_visit = FALSE, # Do we have a visit for time 0?
-                            remove_missing_visits = TRUE) {
+                            remove_missing_visits = TRUE,
+                            save_prob_y_obs = FALSE) {
   
   ncenters <- length(unique(data$centerid))
   
@@ -272,6 +290,9 @@ censor_visits_3 <- function(data,
   
   if (keep_baseline_visit) {
     prob_yobs[data$time == 0] <- 1
+  }
+  if (save_prob_y_obs) {
+    data$prob_yobs <- prob_yobs
   }
   
   # Set outcome to NA where missing
@@ -288,7 +309,8 @@ censor_visits_4 <- function(data,
                             treat_var = "trt",
                             time_var = "time",
                             keep_baseline_visit = FALSE, # Do we have a visit for time 0?
-                            remove_missing_visits = TRUE) {
+                            remove_missing_visits = TRUE,
+                            save_prob_y_obs = FALSE) {
   
   ncenters <- length(unique(data$centerid))
   
@@ -299,6 +321,9 @@ censor_visits_4 <- function(data,
   
   if (keep_baseline_visit) {
     prob_yobs[data$time == 0] <- 1
+  }
+  if (save_prob_y_obs) {
+    data$prob_yobs <- prob_yobs
   }
   
   # Set outcome to NA where missing
@@ -315,7 +340,8 @@ censor_visits_5 <- function(data,
                             treat_var = "trt",
                             time_var = "time",
                             keep_baseline_visit = FALSE, # Do we have a visit for time 0?
-                            remove_missing_visits = TRUE) {
+                            remove_missing_visits = TRUE,
+                            save_prob_y_obs = FALSE) {
   
   ncenters <- length(unique(data$centerid))
   
@@ -326,6 +352,9 @@ censor_visits_5 <- function(data,
   
   if (keep_baseline_visit) {
     prob_yobs[data$time == 0] <- 1
+  }
+  if (save_prob_y_obs) {
+    data$prob_yobs <- prob_yobs
   }
 
   # Set outcome to NA where missing
@@ -342,7 +371,8 @@ censor_visits_6 <- function(data,
                             treat_var = "trt",
                             time_var = "time",
                             keep_baseline_visit = FALSE, # Do we have a visit for time 0?
-                            remove_missing_visits = TRUE) {
+                            remove_missing_visits = TRUE,
+                            save_prob_y_obs = FALSE) {
   
   prob_yobs <- rep(0.03, nrow(data)) 
   prob_yobs[data[,treat_var] == 0 & data[,time_var] %% 6 == 0] <- 0.85
@@ -350,6 +380,9 @@ censor_visits_6 <- function(data,
   
   if (keep_baseline_visit) {
     prob_yobs[data$time == 0] <- 1
+  }
+  if (save_prob_y_obs) {
+    data$prob_yobs <- prob_yobs
   }
 
   # Set outcome to NA where missing
@@ -368,7 +401,8 @@ censor_visits_7 <- function(data,
                             treat_var = "trt",
                             time_var = "time",
                             keep_baseline_visit = FALSE, # Do we have a visit for time 0?
-                            remove_missing_visits = TRUE) {
+                            remove_missing_visits = TRUE,
+                            save_prob_y_obs = FALSE) {
   
   prob_yobs <- rep(0.03, nrow(data))
   prob_yobs[data[,treat_var] == 0 & data[,time_var] %% 3 == 0] <- 0.35
@@ -376,6 +410,9 @@ censor_visits_7 <- function(data,
   
   if (keep_baseline_visit) {
     prob_yobs[data$time == 0] <- 1
+  }
+  if (save_prob_y_obs) {
+    data$prob_yobs <- prob_yobs
   }
   
   # Set outcome to NA where missing
@@ -411,10 +448,5 @@ censor_visits_8 <- function(data,
 }
 
 
-convert_to_EDSS_scale <- function(x) {
-  x <- round(x*2)/2
-  x[which(x < 0)] <- 0
-  x[which(x > 9.5)] <- 9.5
-  x
-}
+
 

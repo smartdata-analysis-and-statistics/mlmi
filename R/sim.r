@@ -1,6 +1,5 @@
-require(mice)
-require(nlme)
-require(ipwCoxCSV)
+library(ipwCoxCSV)
+library(stringr)
 
 derive_max_fup <- function(data,
                            outcome_var = "edss") {
@@ -16,69 +15,7 @@ derive_max_fup <- function(data,
   data.frame(data)
 }
 
-impute_y_locf <- function(data,
-                          outcome_var = "edss") {
-  
-  ytimes <- 0:max(data$time)
-  y_cens <- array(NA, dim = c(length(unique(data$patid)), length(ytimes)))
-  
-  for (i in 1:length(ytimes)) {
-    y_cens[,i] <- subset(data, time == ytimes[i])[,outcome_var]
-    
-    if (i > 1) {
-      # Replace missing values by observations from previous time
-      y_cens[is.na(y_cens[,i]),i] <- y_cens[is.na(y_cens[,i]),(i - 1)] 
-    }
-  }
-  
-  # Fill in imputations
-  data$y_imp_locf <- as.vector(t(y_cens))
-  
-  data
-}
 
-impute_y_rounding <- function(data,
-                              outcome_var = "edss") {
-
-  ytimes <- 0:max(data$time)
-  y_cens <- array(NA, dim = c(length(unique(data$patid)), length(ytimes)))
-  
-  for (i in 1:length(ytimes)) {
-    y_cens[,i] <- subset(data, time == ytimes[i])[,outcome_var]
-  }
-  
-  y_imputed <- y_cens
-  
-  y_obs <- array(0, dim = dim(y_cens))
-  y_obs[!is.na(y_cens)] <- 1
-  
-  
-  to_impute <- which(is.na(y_cens), arr.ind = TRUE)
-  pb <- txtProgressBar(min = 0, max = nrow(to_impute), style = 3)
-  for (i in 1:nrow(to_impute)) {
-    # Retrieve column and row
-    col <- to_impute[i, "col"]
-    row <- to_impute[i, "row"]
-    
-    # Identify imputation sources
-    imp_source <- which(y_obs[row,] == 1)
-    
-    # Identify imputation distance
-    imp_cols <- abs(col - imp_source)
-    
-    # Impute!
-    y_imputed[row, col] <- mean(y_cens[row,imp_source[which(imp_cols == min(imp_cols))]])
-    
-    # Update progress bar
-    setTxtProgressBar(pb, i)
-  }
-  close(pb)
-  
-  # Fill in imputations
-  data$y_imp_rounding <- as.vector(t(y_imputed))
-  
-  data
-}
 
 
 evaluate_rmse <- function(data,
@@ -216,6 +153,108 @@ evaluate_rounding <- function(data,
              "rmse" = q_imp$rmse)
 }
 
+evaluate_lme_3l <- function(data,
+                            n.imp = 10,
+                            window_size, 
+                            confirmation_window,
+                            extrapolate_cdp,
+                            sampling_resid = "condMVN",
+                            method_lbl = "LME-CE (PMM)"
+) {
+  
+  if (missing(n.imp) | n.imp < 1) {
+    stop("Invalid number of imputations")
+  }
+  
+  impdata <- impute_y_mice_3l(data = data, n.imp = n.imp, sampling_resid = sampling_resid)
+  
+  if (is.null(impdata$fit)) {
+    out <- data.frame("method" = c(paste(method_lbl, "(PMM)", paste(method_lbl, "(EDSS conversion)"))),
+                      "est_logHR" = c(NA, NA), # Estimated logHR
+                      "est_HR" = c(NA, NA), # Estimated logHR
+                      "est_HR_CIl" = c(NA, NA), 
+                      "est_HR_CIu" = c(NA, NA),  
+                      "window" = rep(window_size,2), # Size of the imputation grid
+                      "confirmation" = rep(confirmation_window,2), # Time needed to confirm a progression (months)
+                      "nobs_imputed" = c(NA, NA), # Total number of imputed values
+                      "rmse" = c(NA, NA))
+    return(out)
+  }
+  
+  # Identify number of imputed values and their RMSE for imputing the expected value
+  
+  q_imp_pmm <- evaluate_rmse(impdata$data, y_label = "y_imp_lme3l_mi_pmm", window_size = window_size)
+  q_imp_cnv <- evaluate_rmse(impdata$data, y_label = "y_imp_lme3l_mi_conv", window_size = window_size)
+  
+  y_imp_pmm <-  colnames(impdata$data)[which(str_detect(colnames(impdata$data),"y_imp_lme3l_mi_pmm_"))]
+  y_imp_cnv <-  colnames(impdata$data)[which(str_detect(colnames(impdata$data),"y_imp_lme3l_mi_conv_"))]
+  
+  
+  results_pmm <- results_cnv <- data.frame(est_logHR = numeric(), est_HR = numeric(), est_HR_CIl = numeric(), est_HR_CIu = numeric())
+  
+  
+  for (imp in seq(length(y_imp_pmm))) {
+    
+    # Predictive mean matching analyses
+    prog_data <- derive_cdp(data = impdata$data, 
+                            outcome_var = y_imp_pmm[imp],
+                            window_size = window_size,
+                            confirmation_window = confirmation_window,
+                            extrapolate = extrapolate_cdp) 
+    
+    fit <- ipwCoxCluster(data.frame(prog_data), 
+                         indID = "centerid", 
+                         indA = "x", 
+                         indX = c("age", "edss_baseval"), 
+                         indStatus = "event", 
+                         indTime = "tte", 
+                         ties = "breslow",
+                         confidence = 0.95)
+    
+    results_pmm[imp,] <- fit["conventional weights", c("log HR Estimate", "HR Estimate", "HR 95% CI-low", "HR 95% CI-up")] 
+    
+    # Conversion based analyses
+    prog_data <- derive_cdp(data = impdata$data, 
+                            outcome_var = y_imp_cnv[imp],
+                            window_size = window_size,
+                            confirmation_window = confirmation_window,
+                            extrapolate = extrapolate_cdp) 
+    
+    fit <- ipwCoxCluster(data.frame(prog_data), 
+                         indID = "centerid", 
+                         indA = "x", 
+                         indX = c("age", "edss_baseval"), 
+                         indStatus = "event", 
+                         indTime = "tte", 
+                         ties = "breslow",
+                         confidence = 0.95)
+    
+    results_cnv[imp,] <- fit["conventional weights", c("log HR Estimate", "HR Estimate", "HR 95% CI-low", "HR 95% CI-up")] 
+    
+  }
+  
+  df_pmm <- data.frame("method" = paste(method_lbl, "(PMM)") ,
+                       "est_logHR" = mean(results_pmm$est_logHR), # Estimated logHR
+                       "est_HR" = mean(results_pmm$est_HR), # Estimated logHR
+                       "est_HR_CIl" = mean(results_pmm$est_HR_CIl), 
+                       "est_HR_CIu" = mean(results_pmm$est_HR_CIu),  
+                       "window" = window_size, # Size of the imputation grid
+                       "confirmation" = confirmation_window, # Time needed to confirm a progression (months)
+                       "nobs_imputed" = q_imp_pmm$nobs_imputed, # Total number of imputed values
+                       "rmse" = q_imp_pmm$rmse)
+  df_cnv <- data.frame("method" = paste(method_lbl, "(EDSS conversion)") ,
+                       "est_logHR" = mean(results_cnv$est_logHR), # Estimated logHR
+                       "est_HR" = mean(results_cnv$est_HR), # Estimated logHR
+                       "est_HR_CIl" = mean(results_cnv$est_HR_CIl), 
+                       "est_HR_CIu" = mean(results_cnv$est_HR_CIu),  
+                       "window" = window_size, # Size of the imputation grid
+                       "confirmation" = confirmation_window, # Time needed to confirm a progression (months)
+                       "nobs_imputed" = q_imp_cnv$nobs_imputed, # Total number of imputed values
+                       "rmse" = q_imp_cnv$rmse)
+  
+  return(rbind(df_pmm, df_cnv))
+}
+
 run_sim <- function(simpars, 
                     censorFUN,
                     window_size = 3, 
@@ -256,21 +295,33 @@ run_sim <- function(simpars,
                         nobs_imputed = numeric(),
                         rmse = numeric()) 
   
+  # Reference (no missing data)
   results <- results %>% add_row(evaluate_reference(data = misdat, 
                                          window_size = window_size, 
                                          confirmation_window = confirmation_window))
   
+  # LOCF
   results <- results %>% add_row(evaluate_locf(data = misdat, 
                                                window_size = window_size, 
                                                confirmation_window = confirmation_window, 
                                                extrapolate_cdp = extrapolate_cdp,
                                                method_lbl = "LOCF"))
   
+  # Rounding
   results <- results %>% add_row(evaluate_rounding(data = misdat, 
                                                window_size = window_size, 
                                                confirmation_window = confirmation_window, 
                                                extrapolate_cdp = extrapolate_cdp,
                                                method_lbl = "Rounding"))
+  
+  # Multilevel imputation
+  results <- results %>% add_row(evaluate_lme_3l(data = misdat, 
+                  n.imp = 10, 
+                  window_size = window_size, 
+                  confirmation_window = confirmation_window, 
+                  extrapolate_cdp = extrapolate_cdp,
+                  sampling_resid = "condMVN", 
+                  method_lbl = "LME-CE"))
   
  
   # Get system info

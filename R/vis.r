@@ -112,7 +112,43 @@ plot_imputed_trajectories <- function(fits,
     theme(legend.position = "bottom") +
     facet_wrap(~imputation, ncol = 2)
   return(g)
-  
-  
 }
+
+plot_md_pattern <- function(simpars, censorFUN) {
+  
+  # Generate a dataset
+  simpars$npatients <- 2000
+  simpars$ncenters <- 50
+  sim_data <- sim_data(simpars)
+  
+  # Introduce missing values
+  sim_data <- censorFUN(data = sim_data, save_prob_y_obs = TRUE)
+    
+  ggdat <- sim_data %>% group_by(time, trt) %>% 
+    summarise(pr_yobs = mean(prob_yobs),
+              pr_yobs_iqrl = quantile(prob_yobs, probs = 0.25),
+              pr_yobs_iqrm = quantile(prob_yobs, probs = 0.50),
+              pr_yobs_iqru = quantile(prob_yobs, probs = 0.75))
+
+  
+  # Remove rows where time=0
+  ggdat <- subset(ggdat, time > 0)
+  
+  # Generate factors for relevant variables
+  ggdat$Treatment <- factor(ggdat$trt, levels = c(0,1), labels = c("DMT A", "DMT B"))
+  
+  
+  ggplot(ggdat, aes(x = time, y = pr_yobs_iqrm, fill = Treatment, color = Treatment)) + 
+    geom_errorbar(aes(group = time, ymax = pr_yobs_iqru, ymin = pr_yobs_iqrl)) +
+    geom_point(aes(group = time)) + 
+    ylab("Probability of observing the EDSS score") +
+    scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+    xlab("Time (months)") + 
+    scale_x_continuous(breaks = c(1, 9, 18, 27, 36, 45, 54, 60)) +
+    scale_color_manual(values = c("#2171b5", "#6baed6", "hotpink1", "hotpink4")) +
+    theme(legend.position = "bottom") +
+    facet_wrap(~Treatment)
+
+}
+
   

@@ -9,9 +9,9 @@ mice.impute.mlmi <- function(y, ry, x, type, wy = NULL, intercept = TRUE,
   type <- c(2, type)
   names(type)[1] <- colnames(x)[1] <- "(Intercept)"
   
-  clust <- names(type[type == -3]) # Patient
-  rande <- names(type[type == 2])
-  group <- names(type[type == -2]) # Center
+  clust <- names(type[type == -3]) # Clustering of patients
+  rande <- names(type[type == 2]) # Random slopes - these are ignored
+  group <- names(type[type == -2]) # Clustering of centers
   time <- names(type[type == 6]) # Time will be treated as a fixed effect and also be used to define the autocorrelation
   
   fixe <- names(type[type > 0])
@@ -174,3 +174,4 @@ mice.impute.mlmi <- function(y, ry, x, type, wy = NULL, intercept = TRUE,
   # Return the imputed values
   yimp_pmm[wy]
 }
+

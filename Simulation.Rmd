@@ -1,0 +1,81 @@
+---
+title: "Explanation of the R code"
+author: "Thomas Debray"
+date: "28-6-2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+```
+
+
+```{r}
+source("R/dgm.r")
+source("R/vis.r")
+source("R/imp.r")
+source("R/sim.r")
+```
+
+We first need to set up the data-generating mechanism to enable the generation of a non-randomized dataset with two treatments. By default, a total of 61 visits will be generated for each patient, with a frequency of one visit per month. The outcome at each visit (EDSS) is determined by the received treatment, the total treatment exposure time, and the age at baseline. In addition, random variation is added to the EDSS scores, with clustering by patient ID and by center ID. 
+
+```{r}
+simpars <- setup(delta_xt = -0.007) 
+```
+
+The configuration above ensures that the active treatment will reduce deterioration in EDSS by 0.007 points each day (as compared to the control treatment). We can now simulate a dataset:
+
+```{r}
+dat <- sim_data(simpars)
+head(dat)
+```
+
+So far, the simulated dataset does not contain any missing visits. We can introduce irregular visit patterns by informatively censoring certain vists from `dat`. Several informative censoring functions are available from `R/dgm.r`. We will consider `censor_visits_7()`, which introduces the following visit pattern:
+
+```{r}
+plot_md_pattern(simpars, censor_visits_7)
+```
+
+We can apply the informative visit process as follows:
+
+```{r}
+misdat <- censor_visits_7(dat)
+subset(misdat, patid == 1)
+```
+
+The observed EDSS trajectory of patient with `patid=1` is then as follows:
+
+```{r}
+plot_example_trajectory(misdat, sel_patid = 1)
+```
+
+We can also visualize the age distribution across the treatment groups:
+
+```{r}
+plot_dens_x(misdat, x_var = "age", x_label = "Age")
+```
+
+We can visualize the total follow-up for each center:
+
+```{r}
+plot_max_fup(misdat)
+```
+
+We can now generate an imputed dataset using the `mice` software package. We will only generate imputed values on a 3-month grid. 
+
+```{r}
+imptimes <- seq(0, 60, by = 3)
+imp <- impute(misdat, times = imptimes, maxit = 1)
+
+# Visualize the imputed trajectory of one patient
+plot_imputed_trajectories(imp, sel_patid = 1)
+```
+
+Finally, we can run a simulation study to assess the ability of the imputation model to recover the missing EDSS scores and to estimate the treatment effect. Since no Gibbs sampler is needed in this case, we implemented a faster version that bypassess the need of MICE and generates 10 imputed datasets simultaneously.
+
+```{r}
+sim <- run_sim(simpars, censor_visits_7, seed = 101)
+sim
+```
