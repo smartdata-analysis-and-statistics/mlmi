@@ -1,7 +1,5 @@
 ---
 title: "Explanation of the R code"
-author: "Thomas Debray"
-date: "28-6-2022"
 output: pdf_document
 ---
 
@@ -32,7 +30,7 @@ dat <- sim_data(simpars)
 head(dat)
 ```
 
-So far, the simulated dataset does not contain any missing visits. We can introduce irregular visit patterns by informatively censoring certain vists from `dat`. Several informative censoring functions are available from `R/dgm.r`. We will consider `censor_visits_7()`, which introduces the following visit pattern:
+So far, the simulated dataset does not contain any missing visits. We can introduce irregular visit patterns by informatively censoring certain vists from `dat`. Eight different informative censoring functions are available from `R/dgm.r`. We will consider `censor_visits_7()`, which introduces the following visit pattern:
 
 ```{r}
 plot_md_pattern(simpars, censor_visits_7)

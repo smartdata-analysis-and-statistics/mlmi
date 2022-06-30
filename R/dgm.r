@@ -1,4 +1,3 @@
-# Version Dec 22, 15h59
 library(dplyr, warn.conflicts = FALSE)
 #library(Matrix)
 #library(sparseMVN)
@@ -429,13 +428,17 @@ censor_visits_8 <- function(data,
                             treat_var = "trt",
                             time_var = "time",
                             keep_baseline_visit = FALSE, # Do we have a visit for time 0?
-                            remove_missing_visits = TRUE) {
+                            remove_missing_visits = TRUE,
+                            save_prob_y_obs = FALSE) {
   
   # Define MNAR model
   prob_yobs <- expit(-0.5  -  0.5 * data[,outcome_var] + 0.5 * data[,treat_var])
   
   if (keep_baseline_visit) {
     prob_yobs[data$time == 0] <- 1
+  }
+  if (save_prob_y_obs) {
+    data$prob_yobs <- prob_yobs
   }
 
   # Set outcome to NA where missing
