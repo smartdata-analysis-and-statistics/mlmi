@@ -14,7 +14,7 @@ load("data/casestudy-MSPATHS.rda")
 ```
 
 
-```{r}
+```{r echo = F}
 source("R/dgm.r")
 source("R/vis.r")
 source("R/imp.r")
@@ -22,7 +22,7 @@ source("R/sim.r")
 ```
 
 
-## Case study data
+# Case study data
 We selected patients from MS PATHS that received DMF or FTY and constructed their treatment sequences by identifying consecutive visits on the same DMT. We focused on treatment sequences that started at a follow-up visit (not at the initial MS PATHS visit) and assumed that the baseline visit corresponded to treatment initiation. In this section, we focus on the data of `r length(unique(ds$mpi))` patients with complete baseline data. Details are depicted below:
 
 ```{r echo = FALSE}
@@ -30,12 +30,29 @@ plot_baseline_characteristics(ds)
 ```
 
 ```{r echo = FALSE} 
-nvisit_iqr <- quantile(ds %>% group_by(mpi) %>% summarize(mean = n()) %>% pull(mean))
+nvisit_mspaths <- ds %>% group_by(mpi) %>% summarize(nvisit = n())
+nvisit_iqr <- quantile(nvisit_mspaths %>% pull(nvisit))
 ```
 
-The median number of visits per patient in MS PATHS is `r nvisit_iqr["50%"]`, with an interquartile range from `r nvisit_iqr["25%"]` to  `r nvisit_iqr["75%"]`. The figure below depicts the distribution of number of days between consecutive visits for 192 new DMF users and 162 new FTY users
-having at least one follow-up visit beyond baseline.
+The median number of visits per patient in MS PATHS is `r nvisit_iqr["50%"]`, with an interquartile range from `r nvisit_iqr["25%"]` to  `r nvisit_iqr["75%"]`. A total of `r nrow(nvisit_mspaths %>% filter(nvisit > 1))` patients have more than one visit. The figure below depicts the distribution of number of days between consecutive visits for 192 new DMF users and 162 new FTY users having at least one follow-up visit beyond baseline.
 
 ```{r echo = FALSE}
 plot_interval_visits(ds)
 ```
+
+# Propensity score weighting
+Figure \ref{fig:figSMD} depicts covariate balance measured by standardized mean difference (SMD) in the cohort of `r nrow(ds)` patients with complete baseline data before and after weighting. The inverse probability weights are based on the following baseline covariates: age, sex, MS type, years of education, disease duration, PDDS score, self-reported number of relapses in the past 12 months, prior DMT efficacy, history of cardiovascular disease, and history of diabetes.
+
+```{r figSMD, echo = FALSE, fig.cap="\\label{fig:figSMD}Covariate balance before and after weighting, as assessed with standardized mean differences (SMDs). An absolute SMD below 0.10 (dashed line) is considered satisfactory balance."}
+plot_propensity_SMD(ds)
+```
+
+# Preparing the dataset for multiple imputation
+We reconstructed the entire PDDS trajectories following pre-specified grids of visits every 3 months. To this purpose, we add rows at missing time points up to 90 days after the last visit.
+
+```{r}
+ds_c3 <- add_imp_rows(ds, window_size = 3*30, confirmation_window = 1)
+```
+
+TODO:  Show example trajectory with missing and observed data
+

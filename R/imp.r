@@ -358,3 +358,88 @@ impute_y_mice_3l <- function(data,
   list(data = data, fit = fit)
 }
 
+# Function for the case study
+add_imp_rows <- function(data, window_size, confirmation_window, extrapolation = TRUE) {
+  
+  # vars
+  incvars <- c("mpi", "site", "visit", "visit_at_new_DMT", "dmt_nm", "baseval_age", 
+               "baseval_sex", "baseval_educ", "baseval_msdur", "baseval_mstype",
+               "baseval_relapses", "baseval_prior_dmt_effic", "baseval_cardio",
+               "baseval_diabetes", "pdds", "baseval_pdds", "treat", "tdays")
+  
+  # Identify which patients have more than 1 visit
+  nvisits <- data %>% group_by(mpi) %>% tally()
+  dat_fup <- data %>% group_by(mpi) %>% summarize(max_fup = max(time))
+  
+  mpi_exclude <- subset(nvisits, n == 1)$mpi
+  #cat(paste("Ignoring", length(mpi_exclude), "patients with fewer than 2 visits (mpi:", paste(mpi_exclude, collapse = ", "), "\n"))
+  
+  # Identify for how many patients we need to generate imputed outcomes
+  mpi_include <- subset(nvisits, n > 1)$mpi
+  #cat(paste("Adding empty records for", length(mpi_include), "patients\n"))
+  
+  
+  # Iterate over each patient
+  #pb <- txtProgressBar(min = 0, max = length(mpi_include), style = 3)
+  
+  data$tdays <- as.numeric(data$time)
+  
+  ds_out <- subset(data, mpi %in% mpi_exclude)[,incvars]
+  
+  
+  # Only add empty rows for patients with more than 1 visit
+  for (i in seq_along(mpi_include)) {
+    
+    ds_pat <- subset(data, mpi == mpi_include[i])[,incvars]
+    
+    # Identify visits within 3 months before the end of treatment sequence 
+    visits_end_sequence_with_CDP <- subset(ds_pat, tdays > (max(ds_pat$tdays) - window_size) & pdds >= (baseval_pdds + 1))
+    
+    # The end of a treatment sequence may correspond to the first visit not on DMF and FTY, right? 
+    # In this case, we will NOT impute beyond the last visit to confirm a progression because, at that time, the patient may already be on another drug. 
+    # However, if the end of the treatment sequence corresponds to the patient’s last visit in MS PATHS, then we can impute beyond the last visit to 
+    # confirm a progression. For simplicity, we can just decide to not impute beyond the last visit for all patients.
+    if (sum(ds_pat$visit_at_new_DMT) == 0 & nrow(visits_end_sequence_with_CDP) > 0 & extrapolation) {
+      # Impute beyond the last visit date!
+      # If a disease progression was observed less than 3 months before the end of treatment sequence, 
+      # we allowed to impute beyond the follow-up time to confirm the progression.
+      ytimes <- seq(from = 0, to = (max(ds_pat$tdays)) + window_size*confirmation_window, by = window_size)
+      ytimes <- ytimes[-which(ytimes %in% ds_pat$tdays)]
+      
+    } else {
+      ytimes <- seq(from = 0, to = max(ds_pat$tdays), by = window_size)
+      ytimes <- ytimes[-which(ytimes %in% ds_pat$tdays)]
+    }
+    
+    if (length(ytimes) == 0) {
+      ds_out <- rbind(ds_out, ds_pat)
+      next
+    }
+    
+    # Copy the baseline data for time point where an imputation is desired
+    newrows <- ds_pat %>% slice(rep(1, each = length(ytimes)))
+    newrows$visit <- newrows$visit_at_new_DMT <- newrows$pdds <- NA
+    newrows$tdays <- ytimes
+    
+    ds_pat <- rbind(ds_pat, newrows)
+    
+    ds_pat <- ds_pat[order(ds_pat$tdays),] 
+    ds_out <- rbind(ds_out, ds_pat)
+    
+    #setTxtProgressBar(pb,i)
+  }
+  
+  #close(pb)
+  
+  ds_out <- merge(ds_out, dat_fup, by = "mpi")
+  
+  # Highlight which observations are on the window
+  ds_out$grid <- FALSE
+  ds_out$grid[which(ds_out$tdays %% window_size == 0)] <- TRUE
+  
+  # Add info on maximum follow-up for each patient
+  
+  
+  ds_out
+}
+

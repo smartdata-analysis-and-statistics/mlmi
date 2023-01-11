@@ -408,6 +408,110 @@ plot_interval_visits <- function(data) {
     ggtitle(paste("Interval between consecutive visits; N =", length(unique(plotdat$mpi)), "patients"))  + 
     theme(legend.position = "bottom")
  
+}
+
+plot_propensity_SMD <- function(data) {
+  require(ipw)
+  require(tableone)
+  require(survey)
+  require(reshape2)
   
+  ds_ipw <- data %>%
+    group_by(mpi) %>%
+    summarize(
+      site = first(site),
+      dmt_nm = first(dmt_nm),
+      treat = first(treat),
+      agemspt = first(baseval_age),
+      sex = first(baseval_sex),
+      educ = first(baseval_educ),
+      msdur = first(baseval_msdur),
+      mstype = first(baseval_mstype),
+      relapses = first(baseval_relapses),
+      prior_dmt_effic = first(baseval_prior_dmt_effic),
+      cardio = first(baseval_cardio),
+      diabetes = first(baseval_diabetes),
+      pdds_baseval = first(baseval_pdds))
+  
+  
+  # ipw package does not work with tibble objects, so need to create data frame
+  ds_ipw <- ds_ipw %>% as.data.frame
+  w_ate <- ipwpoint(
+    exposure = treat,
+    family = "binomial",
+    link = "logit",
+    numerator =  ~ 1,
+    denominator = ~ agemspt + sex + mstype + educ + msdur + pdds_baseval + relapses + prior_dmt_effic + cardio + diabetes,
+    data = ds_ipw)
+  
+  
+  vars <-  c("agemspt", 
+             "sex", 
+             "mstype", 
+             "educ", 
+             "msdur", 
+             "pdds_baseval", 
+             "relapses", 
+             "prior_dmt_effic", 
+             "cardio", 
+             "diabetes")
+  var_labels <- c("Age", 
+                  "Male gender", 
+                  "MS type", 
+                  "Years of education", 
+                  "Duration of MS", 
+                  "PDDS score",
+                  "No. of relapses past 12 monts",
+                  "Prior DMT efficacy",
+                  "History of CVD",
+                  "History of diabetes")
+  
+  tabUnmatched <- CreateTableOne(vars = vars, strata = "dmt_nm", data = ds_ipw, test = FALSE)
+  
+  
+  ## Construct a data frame containing variable name and SMD from all methods
+  rhcSvy <- svydesign(ids = ~ 1, data = ds_ipw, weights = ~ w_ate$ipw.weights)
+  tabWeighted <- svyCreateTableOne(vars = vars, strata = "dmt_nm", data = rhcSvy, test = FALSE)
+  
+  dataPlot <- data.frame(variable  = rownames(ExtractSmd(tabUnmatched)),
+                         Unmatched = as.numeric(ExtractSmd(tabUnmatched)),
+                         Weighted  = as.numeric(ExtractSmd(tabWeighted)))
+  
+  ## Create long-format data for ggplot2
+  dataPlotMelt <- melt(data          = dataPlot,
+                       id.vars       = c("variable"),
+                       variable.name = "Method",
+                       value.name    = "SMD")
+  
+  ## Order variable names by magnitude of SMD
+  varNames <- as.character(dataPlot$variable)[order(dataPlot$Unmatched)]
+  
+  ## Order factor levels in the same order
+  dataPlotMelt$variable <- factor(dataPlotMelt$variable,
+                                  levels = varNames)
+  
+  dataPlotMelt$Predictor <- var_labels[match(dataPlotMelt$variable, vars)]
+  dataPlotMelt$Predictor <- factor(dataPlotMelt$Predictor,
+                                   labels = dataPlotMelt$Predictor[match(varNames, dataPlotMelt$variable)],
+                                   levels = dataPlotMelt$Predictor[match(varNames, dataPlotMelt$variable)])
+  
+  
+  # Fix the legend (before weigthing vs after weighting)
+  dataPlotMelt$Method <- factor(dataPlotMelt$Method, 
+                                levels = c("Unmatched", "Weighted"),
+                                labels = c("Before weighting", "After weighting"))
+  
+  ggplot(data = dataPlotMelt,
+              mapping = aes(x = Predictor, y = SMD, group = Method, color = Method)) +
+    #geom_line() +
+    xlab("") + 
+    geom_point(size=2.5) +
+    geom_hline(yintercept = 0.1, color = "black", size = 0.1, lty = 2) +
+    coord_flip() +
+    theme_bw() + 
+    theme(legend.key = element_blank())  + 
+    theme(legend.position="bottom") + 
+    theme(legend.title = element_blank())
+
 }
   
