@@ -1,4 +1,7 @@
 library(ggplot2)
+library(grid)
+library(gridExtra)
+library(kableExtra)
 
 plot_example_trajectory <- function(dat,
                                     sel_patid = 1,
@@ -151,4 +154,260 @@ plot_md_pattern <- function(simpars, censorFUN) {
 
 }
 
+# Visualize data from the case study
+plot_baseline_characteristics <- function(data) {
+  
+  data <- data %>% group_by(mpi) %>% summarize(
+    nvisit = max(visit),
+    agemspt = first(baseval_age),
+    sex = first(baseval_sex),
+    educ = first(baseval_educ),
+    msdur = first(baseval_msdur),
+    mstype = first(baseval_mstype),
+    relapses = first(baseval_relapses),
+    prior_dmt_effic = first(baseval_prior_dmt_effic),
+    cardio = first(baseval_cardio),
+    diabetes = first(baseval_diabetes),
+    baseval_pdds = first(baseval_pdds),
+    dmt_nm = first(dmt_nm)
+  )
+  
+  dat_complete <- subset(data, !is.na(agemspt) & !is.na(sex) & !is.na(educ) & !is.na(msdur) & !is.na(mstype) & !is.na(relapses) & !is.na(prior_dmt_effic) &
+                           !is.na(cardio) & !is.na(diabetes) & !is.na(baseval_pdds))
+  
+  
+  d <- data.frame(Parameter = character(),
+                  DMF = character(), 
+                  FTY = character(), 
+                  missing = character())
+  
+  dhpack <- data.frame("Title" = character(),
+                       "index" = numeric())
+  
+  
+  # N
+  d <- d %>% add_row(data.frame(Parameter = "Total sample size",
+                                DMF = paste(nrow(subset(data, dmt_nm == "Tecfidera")), sep = ""),
+                                FTY = paste(nrow(subset(data, dmt_nm == "Gilenya")), sep = ""),
+                                missing = ""))
+  
+  # Complete cases
+  d <- d %>% add_row(data.frame(Parameter = "Complete cases", 
+                                DMF = paste(nrow(subset(dat_complete, dmt_nm == "Tecfidera")), sep = ""),
+                                FTY = paste(nrow(subset(dat_complete, dmt_nm == "Gilenya")), sep = ""),
+                                missing = ""))
+  dhpack <- dhpack %>% add_row(data.frame("Title" = "Sample size, n", "index" = 2))
+  
+  
+  # Age
+  age_t0 <- subset(data, dmt_nm == "Gilenya")$agemspt
+  age_t1 <- subset(data, dmt_nm == "Tecfidera")$agemspt
+  d <- d %>% add_row(data.frame(Parameter = "Median, years (IQR)",
+                                DMF = paste(round(median(age_t1, na.rm = T),0), " [", round(quantile(age_t1, na.rm = T)["25%"],0), " - ", round(quantile(age_t1, na.rm = T)["75%"],0), "]", sep = ""),
+                                FTY = paste(round(median(age_t0, na.rm = T),0), " [", round(quantile(age_t0, na.rm = T)["25%"],0), " - ", round(quantile(age_t0, na.rm = T)["75%"],0), "]", sep = ""),
+                                missing = paste(sum(is.na(data$agemspt)), " [", round(sum(is.na(data$agemspt))*100/nrow(data),0), "%]")))
+  dhpack <- dhpack %>% add_row(data.frame("Title" = "Age", "index" = 1))
+  
+  # Gender (0 = female, 1 = male)
+  sex_t0 <- subset(data, dmt_nm == "Gilenya")$sex
+  sex_t1 <- subset(data, dmt_nm == "Tecfidera")$sex
+  d <- d %>% add_row(data.frame(Parameter = "Male, n (%)",
+                                DMF = paste(sum(sex_t1 == 1), " [", round(sum(sex_t1 == 1)*100/sum(!is.na(sex_t1)), 0), "%]", sep = ""),
+                           FTY = paste(sum(sex_t0 == 1), " [", round(sum(sex_t0 == 1)*100/sum(!is.na(sex_t0)), 0), "%]", sep = ""),
+                           missing = paste(sum(is.na(data$sex)), " [", round(sum(is.na(data$sex))*100/nrow(data),0), "%]")))
+  d <- d %>% add_row(data.frame(Parameter = "Female, n (%)",
+                                DMF = paste(sum(sex_t1 == 0), " [", round(sum(sex_t1 == 0)*100/sum(!is.na(sex_t1)), 0), "%]", sep = ""),
+                           FTY = paste(sum(sex_t0 == 0), " [", round(sum(sex_t0 == 0)*100/sum(!is.na(sex_t0)), 0), "%]", sep = ""),
+                           missing = paste(sum(is.na(data$sex)), " [", round(sum(is.na(data$sex))*100/nrow(data),0), "%]")))
+  dhpack <- dhpack %>% add_row(data.frame("Title" = "Gender", "index" = 2))
+  
+  # Years of education
+  educ_t0 <- subset(data, dmt_nm == "Gilenya")$educ
+  educ_t1 <- subset(data, dmt_nm == "Tecfidera")$educ
+  d <- d %>% add_row(data.frame(Parameter = "Median, years (IQR)",
+                                DMF = paste(round(median(educ_t1, na.rm = T),0), " [", round(quantile(educ_t1, na.rm = T)["25%"],0), " - ", round(quantile(educ_t1, na.rm = T)["75%"],0), "]", sep = ""),
+                           FTY = paste(round(median(educ_t0, na.rm = T),0), " [", round(quantile(educ_t0, na.rm = T)["25%"],0), " - ", round(quantile(educ_t0, na.rm = T)["75%"],0), "]", sep = ""),
+                           missing = paste(sum(is.na(data$educ)), " [", round(sum(is.na(data$educ))*100/nrow(data),0), "%]")))
+  dhpack <- dhpack %>% add_row(data.frame("Title" = "Years of education", "index" = 1))
+  
+  
+  # Disease duration
+  msdur_t0 <- subset(data, dmt_nm == "Gilenya")$msdur
+  msdur_t1 <- subset(data, dmt_nm == "Tecfidera")$msdur
+  d <- d %>% add_row(data.frame(Parameter = "Median, years (IQR)",
+                                DMF = paste(round(median(msdur_t1, na.rm = T),0), " [", round(quantile(msdur_t1, na.rm = T)["25%"],0), " - ", round(quantile(msdur_t1, na.rm = T)["75%"],0), "]", sep = ""),
+                           FTY = paste(round(median(msdur_t0, na.rm = T),0), " [", round(quantile(msdur_t0, na.rm = T)["25%"],0), " - ", round(quantile(msdur_t0, na.rm = T)["75%"],0), "]", sep = ""),
+                           missing = paste(sum(is.na(data$msdur)), " [", round(sum(is.na(data$msdur))*100/nrow(data),0), "%]")))
+  dhpack <- dhpack %>% add_row(data.frame("Title" = "Disease duration", "index" = 1))
+  
+  # MS type
+  mstype_t0 <- subset(data, dmt_nm == "Gilenya")$mstype
+  mstype_t1 <- subset(data, dmt_nm == "Tecfidera")$mstype
+  d <- d %>% add_row(data.frame(Parameter = "Relapsing MS (remitting / progressive)",
+                                DMF = paste(sum(mstype_t1 %in% c("Relapsing Remitting MS", "Progressive Relapsing MS"), na.rm = T), " [", round(sum(mstype_t1 %in% c("Relapsing Remitting MS", "Progressive Relapsing MS"), na.rm = T)*100/sum(!is.na(mstype_t1)), 0), "%]", sep = ""),
+                                FTY = paste(sum(mstype_t0 %in% c("Relapsing Remitting MS", "Progressive Relapsing MS"), na.rm = T), " [", round(sum(mstype_t0 %in% c("Relapsing Remitting MS", "Progressive Relapsing MS"), na.rm = T)*100/sum(!is.na(mstype_t0)), 0), "%]", sep = ""),
+                                missing = ""))
+  d <- d %>% add_row(data.frame(Parameter = "Primary Progressive MS",
+                                DMF = paste(sum(mstype_t1 == "Primary Progressive MS", na.rm = T), " [", round(sum(mstype_t1 == "Primary Progressive MS", na.rm = T)*100/sum(!is.na(mstype_t1)), 0), "%]", sep = ""),
+                           FTY = paste(sum(mstype_t0 == "Primary Progressive MS", na.rm = T), " [", round(sum(mstype_t0 == "Primary Progressive MS", na.rm = T)*100/sum(!is.na(mstype_t0)), 0), "%]", sep = ""),
+                           missing = ""))
+  d <- d %>% add_row(data.frame(Parameter = "Secondary Progressive MS",
+                                DMF = paste(sum(mstype_t1 == "Secondary Progressive MS", na.rm = T), " [", round(sum(mstype_t1 == "Secondary Progressive MS", na.rm = T)*100/sum(!is.na(mstype_t1)), 0), "%]", sep = ""),
+                           FTY = paste(sum(mstype_t0 == "Secondary Progressive MS", na.rm = T), " [", round(sum(mstype_t0 == "Secondary Progressive MS", na.rm = T)*100/sum(!is.na(mstype_t0)), 0), "%]", sep = ""),
+                           missing = ""))
+  dhpack <- dhpack %>% add_row(data.frame("Title" = "MS type, n (%)", "index" = 3))
+  
+  # Number of relapses in previous year
+  relapses_t0 <- subset(data, dmt_nm == "Gilenya")$relapses
+  relapses_t1 <- subset(data, dmt_nm == "Tecfidera")$relapses
+
+  d <- d %>% add_row(data.frame(Parameter = "0",
+                                DMF = paste(sum(relapses_t1 == "0", na.rm = T), " [", round(sum(relapses_t1 == "0", na.rm = T)*100/sum(!is.na(relapses_t1)), 0), "%]", sep = ""),
+                           FTY = paste(sum(relapses_t0 == "0", na.rm = T), " [", round(sum(relapses_t0 == "0", na.rm = T)*100/sum(!is.na(relapses_t0)), 0), "%]", sep = ""),
+                           missing = ""))
+  d <- d %>% add_row(data.frame(Parameter = "1",
+                                DMF = paste(sum(relapses_t1 == "1", na.rm = T), " [", round(sum(relapses_t1 == "1", na.rm = T)*100/sum(!is.na(relapses_t1)), 0), "%]", sep = ""),
+                           FTY = paste(sum(relapses_t0 == "1", na.rm = T), " [", round(sum(relapses_t0 == "1", na.rm = T)*100/sum(!is.na(relapses_t0)), 0), "%]", sep = ""),
+                           missing = ""))
+  d <- d %>% add_row(data.frame(Parameter = "2",
+                                DMF = paste(sum(relapses_t1 == "2", na.rm = T), " [", round(sum(relapses_t1 == "2", na.rm = T)*100/sum(!is.na(relapses_t1)), 0), "%]", sep = ""),
+                           FTY = paste(sum(relapses_t0 == "2", na.rm = T), " [", round(sum(relapses_t0 == "2", na.rm = T)*100/sum(!is.na(relapses_t0)), 0), "%]", sep = ""),
+                           missing = ""))
+  d <- d %>% add_row(data.frame(Parameter = ">=3",
+                                DMF = paste(sum(relapses_t1 == "3_plus", na.rm = T), " [", round(sum(relapses_t1 == "3_plus", na.rm = T)*100/sum(!is.na(relapses_t1)), 0), "%]", sep = ""),
+                           FTY = paste(sum(relapses_t0 == "3_plus", na.rm = T), " [", round(sum(relapses_t0 == "3_plus", na.rm = T)*100/sum(!is.na(relapses_t0)), 0), "%]", sep = ""),
+                           missing = ""))
+  
+  dhpack <- dhpack %>% add_row(data.frame("Title" = "Number of relapses in previous year, n (%)", "index" = 4))
+  
+  # Primary DMT efficacy in previous year, n (%)
+  prior_dmt_effic_t0 <- subset(data, dmt_nm == "Gilenya")$prior_dmt_effic
+  prior_dmt_effic_t1 <- subset(data, dmt_nm == "Tecfidera")$prior_dmt_effic
+  d <- d %>% add_row(data.frame(Parameter = "High",
+                                DMF = paste(sum(prior_dmt_effic_t1 == "High efficacy", na.rm = T), " [", round(sum(prior_dmt_effic_t1 == "High efficacy", na.rm = T)*100/sum(!is.na(prior_dmt_effic_t1)), 0), "%]", sep = ""),
+                           FTY = paste(sum(prior_dmt_effic_t0 == "High efficacy", na.rm = T), " [", round(sum(prior_dmt_effic_t0 == "High efficacy", na.rm = T)*100/sum(!is.na(prior_dmt_effic_t0)), 0), "%]", sep = ""),
+                           missing = ""))
+  d <- d %>% add_row(data.frame(Parameter = "Medium",
+                                DMF = paste(sum(prior_dmt_effic_t1 == "Medium efficacy", na.rm = T), " [", round(sum(prior_dmt_effic_t1 == "Medium efficacy", na.rm = T)*100/sum(!is.na(prior_dmt_effic_t1)), 0), "%]", sep = ""),
+                           FTY = paste(sum(prior_dmt_effic_t0 == "Medium efficacy", na.rm = T), " [", round(sum(prior_dmt_effic_t0 == "Medium efficacy", na.rm = T)*100/sum(!is.na(prior_dmt_effic_t0)), 0), "%]", sep = ""),
+                           missing = ""))
+  d <- d %>% add_row(data.frame(Parameter = "Low",
+                                DMF = paste(sum(prior_dmt_effic_t1 == "Low efficacy", na.rm = T), " [", round(sum(prior_dmt_effic_t1 == "Low efficacy", na.rm = T)*100/sum(!is.na(prior_dmt_effic_t1)), 0), "%]", sep = ""),
+                           FTY = paste(sum(prior_dmt_effic_t0 == "Low efficacy", na.rm = T), " [", round(sum(prior_dmt_effic_t0 == "Low efficacy", na.rm = T)*100/sum(!is.na(prior_dmt_effic_t0)), 0), "%]", sep = ""),
+                           missing = ""))
+  d <- d %>% add_row(data.frame(Parameter = "None",
+                                DMF = paste(sum(prior_dmt_effic_t1 == "No prior DMT", na.rm = T), " [", round(sum(prior_dmt_effic_t1 == "No prior DMT", na.rm = T)*100/sum(!is.na(prior_dmt_effic_t1)), 0), "%]", sep = ""),
+                           FTY = paste(sum(prior_dmt_effic_t0 == "No prior DMT", na.rm = T), " [", round(sum(prior_dmt_effic_t0 == "No prior DMT", na.rm = T)*100/sum(!is.na(prior_dmt_effic_t0)), 0), "%]", sep = ""),
+                           missing = ""))
+  
+  dhpack <- dhpack %>% add_row(data.frame("Title" = "Primary DMT efficacy in previous year, n (%)", "index" = 4))
+  
+  
+  # History of cardiovascular disease, n (%)
+  cvd_t0 <- subset(data, dmt_nm == "Gilenya")$cardio
+  cvd_t1 <- subset(data, dmt_nm == "Tecfidera")$cardio
+  d <- d %>% add_row(data.frame(Parameter = "Cardiovascular disease",
+                                DMF = paste(sum(cvd_t1 == 1, na.rm = T), " [", round(sum(cvd_t1 == 1, na.rm = T)*100/sum(!is.na(cvd_t1)), 0), "%]", sep = ""),
+                           FTY = paste(sum(cvd_t0 == 1, na.rm = T), " [", round(sum(cvd_t0 == 1, na.rm = T)*100/sum(!is.na(cvd_t0)), 0), "%]", sep = ""),
+                           missing = paste(sum(is.na(data$cardio)), " [", round(sum(is.na(data$cardio))*100/nrow(data),0), "%]")))
+  
+  # History of diabetes, n (%)
+  dia_t0 <- subset(data, dmt_nm == "Gilenya")$diabetes
+  dia_t1 <- subset(data, dmt_nm == "Tecfidera")$diabetes
+  d <- d %>% add_row(data.frame(Parameter = "Diabetes",
+                                DMF = paste(sum(dia_t1 == 1, na.rm = T), " [", round(sum(dia_t1 == 1, na.rm = T)*100/sum(!is.na(dia_t1)), 0), "%]", sep = ""),
+                           FTY = paste(sum(dia_t0 == 1, na.rm = T), " [", round(sum(dia_t0 == 1, na.rm = T)*100/sum(!is.na(dia_t0)), 0), "%]", sep = ""),
+                           missing = paste(sum(is.na(data$diabetes)), " [", round(sum(is.na(data$diabetes))*100/nrow(data),0), "%]")))
+  
+  dhpack <- dhpack %>% add_row(data.frame("Title" = "Medical history, n (%)", "index" = 2))
+  
+  # PDDS score, n (%)
+  pdds_t0 <- subset(data, dmt_nm == "Gilenya")$baseval_pdds
+  pdds_t1 <- subset(data, dmt_nm == "Tecfidera")$baseval_pdds
+  d <- d %>% add_row(data.frame(Parameter = "0 - 1",
+                                DMF = paste(length(which(pdds_t1 <= 1)), " [", round(length(which(pdds_t1 <= 1))*100/sum(!is.na(pdds_t1)), 0), "%]", sep = ""),
+                           FTY = paste(length(which(pdds_t0 <= 1)), " [", round(length(which(pdds_t0 <= 1))*100/sum(!is.na(pdds_t0)), 0), "%]", sep = ""),
+                           missing = ""))
+  d <- d %>% add_row(data.frame(Parameter = "2 - 3",
+                                DMF = paste(length(which(pdds_t1 >= 2 & pdds_t1 <= 3)), " [", round(length(which(pdds_t1 >= 2 & pdds_t1 <= 3))*100/sum(!is.na(pdds_t1)), 0), "%]", sep = ""),
+                           FTY = paste(length(which(pdds_t0 >= 2 & pdds_t0 <= 3)), " [", round(length(which(pdds_t0 >= 2 & pdds_t0 <= 3))*100/sum(!is.na(pdds_t0)), 0), "%]", sep = ""),
+                           missing = ""))
+  d <- d %>% add_row(data.frame(Parameter = "4 - 5",
+                                DMF = paste(length(which(pdds_t1 >= 4 & pdds_t1 <= 5)), " [", round(length(which(pdds_t1 >= 4 & pdds_t1 <= 5))*100/sum(!is.na(pdds_t1)), 0), "%]", sep = ""),
+                           FTY = paste(length(which(pdds_t0 >= 4 & pdds_t0 <= 5)), " [", round(length(which(pdds_t0 >=4 & pdds_t0 <= 5))*100/sum(!is.na(pdds_t0)), 0), "%]", sep = ""),
+                           missing = ""))
+  d <- d %>% add_row(data.frame(Parameter = ">= 6",
+                                DMF = paste(length(which(pdds_t1 >= 6 )), " [", round(length(which(pdds_t1 >= 6))*100/sum(!is.na(pdds_t1)), 0), "%]", sep = ""),
+                           FTY = paste(length(which(pdds_t0 >= 6)), " [", round(length(which(pdds_t0 >= 6 ))*100/sum(!is.na(pdds_t0)), 0), "%]", sep = ""),
+                           missing = ""))
+  
+  dhpack <- dhpack %>% add_row(data.frame("Title" = "PDDS score, n (%)", "index" = 4))
+
+  # Number of visits
+  nvisit_t0 <- subset(data, dmt_nm == "Gilenya")$nvisit
+  nvisit_t1 <- subset(data, dmt_nm == "Tecfidera")$nvisit
+  
+  d <- d %>% add_row(data.frame(Parameter = "1 visit",
+                                DMF = paste(length(which(nvisit_t1 == 1)), " [", round(length(which(nvisit_t1 == 1))*100/sum(!is.na(nvisit_t1)), 0), "%]", sep = ""),
+                           FTY = paste(length(which(nvisit_t0 == 1)), " [", round(length(which(nvisit_t0 == 1))*100/sum(!is.na(nvisit_t0)), 0), "%]", sep = ""),
+                           missing = ""))
+  d <- d %>% add_row(data.frame(Parameter = "2 visits",
+                                DMF = paste(length(which(nvisit_t1 == 2)), " [", round(length(which(nvisit_t1 == 2))*100/sum(!is.na(nvisit_t1)), 0), "%]", sep = ""),
+                           FTY = paste(length(which(nvisit_t0 == 2)), " [", round(length(which(nvisit_t0 == 2))*100/sum(!is.na(nvisit_t0)), 0), "%]", sep = ""),
+                           missing = ""))
+  d <- d %>% add_row(data.frame(Parameter = "3 visits",
+                                DMF = paste(length(which(nvisit_t1 == 3)), " [", round(length(which(nvisit_t1 == 3))*100/sum(!is.na(nvisit_t1)), 0), "%]", sep = ""),
+                           FTY = paste(length(which(nvisit_t0 == 3)), " [", round(length(which(nvisit_t0 == 3))*100/sum(!is.na(nvisit_t0)), 0), "%]", sep = ""),
+                           missing = ""))
+  d <- d %>% add_row(data.frame(Parameter = "4 visits",
+                                DMF = paste(length(which(nvisit_t1 == 4)), " [", round(length(which(nvisit_t1 == 4))*100/sum(!is.na(nvisit_t1)), 0), "%]", sep = ""),
+                           FTY = paste(length(which(nvisit_t0 == 4)), " [", round(length(which(nvisit_t0 == 4))*100/sum(!is.na(nvisit_t0)), 0), "%]", sep = ""),
+                           missing = ""))
+  d <- d %>% add_row(data.frame(Parameter = ">= 5 visits",
+                                DMF = paste(length(which(nvisit_t1 >= 5)), " [", round(length(which(nvisit_t1 >= 5))*100/sum(!is.na(nvisit_t1)), 0), "%]", sep = ""),
+                           FTY = paste(length(which(nvisit_t0 >= 5)), " [", round(length(which(nvisit_t0 >= 5))*100/sum(!is.na(nvisit_t0)), 0), "%]", sep = ""),
+                           missing = ""))
+  
+
+  dhpack <- dhpack %>% add_row(data.frame("Title" = "Visit count, n (%)", "index" = 5))
+  
+  dat_groups <- dhpack %>% pull("index")
+  names(dat_groups) <- dhpack %>% pull("Title")
+  
+  d %>% dplyr::select(Parameter, DMF, FTY) %>% 
+    knitr::kable(
+      format = "latex",
+      align = "lcc",
+      booktabs = TRUE,
+      longtable = TRUE,
+      linesep = ""
+    ) %>%
+    kableExtra::kable_styling(
+      latex_options = c("repeat_header"),
+    ) %>%
+    pack_rows(index = dat_groups)
+}
+
+plot_interval_visits <- function(data) {
+  
+  # Remove patients with only one visit
+  pdat <- data %>%
+    group_by(mpi, dmt_nm) %>%
+    summarize(numvisits = max(visit))
+  
+  plotdat <- subset(data, (mpi %in% subset(pdat, numvisits > 1)$mpi))
+  plotdat$difftime[2:nrow(plotdat)] <- plotdat$time[-1] - plotdat$time[-nrow(plotdat)]
+  plotdat$difftime[plotdat$difftime < 0] <- NA
+  plotdat <- subset(plotdat, !is.na(difftime))
+  
+  ggplot(plotdat, aes(x = difftime, color = treatment)) +
+    geom_histogram(position = "dodge", aes(fill = treatment)) +
+    xlab("Intervisit time (#days)") +
+    scale_color_brewer(palette = "Paired") +
+    scale_fill_brewer(palette = "Paired") +
+    ggtitle(paste("Interval between consecutive visits; N =", length(unique(plotdat$mpi)), "patients"))  + 
+    theme(legend.position = "bottom")
+ 
+  
+}
   

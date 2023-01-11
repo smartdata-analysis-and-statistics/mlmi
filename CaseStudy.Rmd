@@ -1,0 +1,41 @@
+---
+title: "Case Study"
+author: "Thomas Debray"
+date: "11-1-2023"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+
+load("data/casestudy-MSPATHS.rda")
+```
+
+
+```{r}
+source("R/dgm.r")
+source("R/vis.r")
+source("R/imp.r")
+source("R/sim.r")
+```
+
+
+## Case study data
+We selected patients from MS PATHS that received DMF or FTY and constructed their treatment sequences by identifying consecutive visits on the same DMT. We focused on treatment sequences that started at a follow-up visit (not at the initial MS PATHS visit) and assumed that the baseline visit corresponded to treatment initiation. In this section, we focus on the data of `r length(unique(ds$mpi))` patients with complete baseline data. Details are depicted below:
+
+```{r echo = FALSE}
+plot_baseline_characteristics(ds)
+```
+
+```{r echo = FALSE} 
+nvisit_iqr <- quantile(ds %>% group_by(mpi) %>% summarize(mean = n()) %>% pull(mean))
+```
+
+The median number of visits per patient in MS PATHS is `r nvisit_iqr["50%"]`, with an interquartile range from `r nvisit_iqr["25%"]` to  `r nvisit_iqr["75%"]`. The figure below depicts the distribution of number of days between consecutive visits for 192 new DMF users and 162 new FTY users
+having at least one follow-up visit beyond baseline.
+
+```{r echo = FALSE}
+plot_interval_visits(ds)
+```
